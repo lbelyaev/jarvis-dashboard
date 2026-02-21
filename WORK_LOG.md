@@ -29,3 +29,30 @@
 - Dashboard should show daily costs in $3-15 range (not $100-600)
 - Gateway must be running for data to appear
 - No remote repo configured — needs `git remote add origin <url>` to push
+
+## 2026-02-21: Fix ops-db sqlite3 invocation for API routes
+
+### What was done
+- Fixed `src/lib/ops-db.ts` `queryDb()` sqlite3 argument construction for dot-commands.
+- Replaced invalid argv token usage (`.mode`, `json`, `.parameter`, `clear`, etc.) with sqlite3-supported `-cmd` form:
+  - `-cmd ".mode json"`
+  - `-cmd ".parameter clear"`
+  - `-cmd ".parameter set ?N <value>"`
+- Kept `execFile` protections and runtime limits (`timeout: 3000`, `maxBuffer: 4MB`).
+- Preserved read-only access (`-readonly`) and positional SQL parameter binding (`?1`, `?2`, ...).
+
+### Safety / injection notes
+- SQL text remains static in code; user input is not interpolated into SQL.
+- Dynamic values are passed via sqlite parameters using `.parameter set` commands.
+- Parameter values are quoted using `JSON.stringify(String(value))` before being sent to sqlite3, preventing command/token injection through shell-like splitting.
+
+### Local verification
+- Started dev server with:
+  - `PORT=3011 OPS_DB_PATH=./ops.db npm run dev`
+- Verified API returns JSON successfully:
+  - `curl http://127.0.0.1:3011/api/ops/events?limit=2`
+  - Result: valid JSON payload with `events` array and `count` (no 500).
+
+### How to run
+- `PORT=3011 OPS_DB_PATH=./ops.db npm run dev`
+- `curl http://127.0.0.1:3011/api/ops/events?limit=2`
