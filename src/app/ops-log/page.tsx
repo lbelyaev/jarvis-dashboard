@@ -4,8 +4,25 @@ import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useOpsLogSSE } from "@/hooks/use-sse";
 import { ScrollText, Wifi, WifiOff, ArrowDown, Filter } from "lucide-react";
+
+type OpsEvent = {
+  id: number;
+  timestamp: string;
+  category: string;
+  event: string;
+  mission_id: number | null;
+  agent_run_id: number | null;
+  pr_id: number | null;
+  repo_id: number | null;
+};
+
+type LogEntry = {
+  id: number;
+  timestamp: string;
+  type: string;
+  message: string;
+};
 
 const typeColors: Record<string, string> = {
   subagent: "text-blue-400",
@@ -31,11 +48,80 @@ const typeBadgeVariant: Record<string, "default" | "success" | "warning" | "dang
   unknown: "default",
 };
 
+function mapEventToEntry(event: OpsEvent): LogEntry {
+  return {
+    id: event.id,
+    timestamp: event.timestamp,
+    type: event.category || "unknown",
+    message: event.event,
+  };
+}
+
 export default function OpsLogPage() {
-  const { entries, connected } = useOpsLogSSE("/api/ops-log");
+  const [entries, setEntries] = useState<LogEntry[]>([]);
+  const [connected, setConnected] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const [typeFilter, setTypeFilter] = useState<string>("");
   const logEndRef = useRef<HTMLDivElement>(null);
+  const sinceRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const poll = async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set("limit", "200");
+        if (sinceRef.current) {
+          params.set("since", sinceRef.current);
+        }
+
+        const response = await fetch(`/api/ops/events?${params.toString()}`, { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const data = (await response.json()) as { events?: OpsEvent[] };
+        const fetchedEvents = Array.isArray(data.events) ? data.events : [];
+
+        if (!mounted) return;
+
+        const orderedAsc = [...fetchedEvents].sort(
+          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+        );
+        const newEntries = orderedAsc.map(mapEventToEntry);
+
+        setEntries((prev) => {
+          const existingIds = new Set(prev.map((entry) => entry.id));
+          const merged = [...prev];
+
+          for (const entry of newEntries) {
+            if (!existingIds.has(entry.id)) {
+              merged.push(entry);
+            }
+          }
+
+          return merged;
+        });
+
+        if (orderedAsc.length > 0) {
+          sinceRef.current = orderedAsc[orderedAsc.length - 1].timestamp;
+        }
+
+        setConnected(true);
+      } catch {
+        if (mounted) {
+          setConnected(false);
+        }
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 2000);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     if (autoScroll && logEndRef.current) {
@@ -79,7 +165,6 @@ export default function OpsLogPage() {
         </div>
       </div>
 
-      {/* Filters */}
       <div className="flex items-center gap-2 flex-wrap">
         <Filter className="h-4 w-4 text-zinc-500" />
         <Button
@@ -101,7 +186,6 @@ export default function OpsLogPage() {
         ))}
       </div>
 
-      {/* Log Viewer */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -120,20 +204,16 @@ export default function OpsLogPage() {
               </div>
             ) : (
               <div className="space-y-0.5">
-                {filteredEntries.map((entry, i) => (
-                  <div key={`${entry.timestamp}-${i}`} className="log-line flex gap-3 py-0.5">
-                    <span className="text-zinc-600 shrink-0 w-32">
-                      {entry.timestamp}
-                    </span>
+                {filteredEntries.map((entry) => (
+                  <div key={entry.id} className="log-line flex gap-3 py-0.5">
+                    <span className="text-zinc-600 shrink-0 w-32">{entry.timestamp}</span>
                     <Badge
                       variant={typeBadgeVariant[entry.type] || "default"}
                       className="shrink-0 w-24 justify-center text-[11px]"
                     >
                       {entry.type}
                     </Badge>
-                    <span className={typeColors[entry.type] || "text-zinc-400"}>
-                      {entry.message}
-                    </span>
+                    <span className={typeColors[entry.type] || "text-zinc-400"}>{entry.message}</span>
                   </div>
                 ))}
                 <div ref={logEndRef} />

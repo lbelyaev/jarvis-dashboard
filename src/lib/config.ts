@@ -2,6 +2,7 @@ export const config = {
   openclawApiUrl: process.env.OPENCLAW_API_URL || "http://localhost:4440",
   workspacePath: process.env.WORKSPACE_PATH || `${process.env.HOME}/.openclaw/workspace`,
   opsLogPath: process.env.OPS_LOG_PATH || `${process.env.HOME}/.openclaw/workspace/memory/ops-log.txt`,
+  opsDbPath: process.env.OPS_DB_PATH || `${process.env.HOME}/.openclaw/workspace/ops.db`,
   githubRepos: [
     "engage-api",
     "engage-media-frontend",
