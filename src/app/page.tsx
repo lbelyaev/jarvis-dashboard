@@ -100,7 +100,7 @@ export default function OverviewPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              ${todayCost ? (todayCost.total / 100).toFixed(2) : "0.00"}
+              ${todayCost ? todayCost.total.toFixed(2) : "0.00"}
             </div>
             <p className="text-xs text-zinc-500 mt-1">
               {todayCost?.sessions || 0} sessions
@@ -215,7 +215,7 @@ export default function OverviewPage() {
                     )}
                     {session.cost && (
                       <span className="text-amber-400">
-                        ${(session.cost / 100).toFixed(2)}
+                        ${session.cost.toFixed(2)}
                       </span>
                     )}
                     <span className="font-mono text-zinc-500">

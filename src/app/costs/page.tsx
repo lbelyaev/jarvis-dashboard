@@ -60,7 +60,7 @@ function CustomTooltip({ active, payload, label }: any) {
           />
           <span className="text-zinc-300">{entry.name}:</span>
           <span className="font-mono text-zinc-100">
-            ${(entry.value / 100).toFixed(2)}
+            ${entry.value.toFixed(2)}
           </span>
         </div>
       ))}
@@ -137,7 +137,7 @@ export default function CostsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-amber-400">
-              ${(totalSpend / 100).toFixed(2)}
+              ${totalSpend.toFixed(2)}
             </div>
           </CardContent>
         </Card>
@@ -151,7 +151,7 @@ export default function CostsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              ${(avgDaily / 100).toFixed(2)}
+              ${avgDaily.toFixed(2)}
             </div>
           </CardContent>
         </Card>
@@ -183,7 +183,7 @@ export default function CostsPage() {
                 <YAxis
                   stroke="#71717a"
                   fontSize={12}
-                  tickFormatter={(v) => `$${(v / 100).toFixed(0)}`}
+                  tickFormatter={(v) => `$${v.toFixed(0)}`}
                 />
                 <Tooltip content={<CustomTooltip />} />
                 <Line
@@ -219,7 +219,7 @@ export default function CostsPage() {
                   <YAxis
                     stroke="#71717a"
                     fontSize={12}
-                    tickFormatter={(v) => `$${(v / 100).toFixed(0)}`}
+                    tickFormatter={(v) => `$${v.toFixed(0)}`}
                   />
                   <Tooltip content={<CustomTooltip />} />
                   <Bar dataKey="total" name="Cost" radius={[4, 4, 0, 0]}>

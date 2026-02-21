@@ -120,7 +120,7 @@ export async function GET() {
             }
           : undefined,
         cost: s.totalTokens
-          ? Math.round(estimateCost(s.model || "", s.inputTokens || 0, s.outputTokens || 0))
+          ? Math.round(estimateCost(s.model || "", s.inputTokens || 0, s.outputTokens || 0)) / 100
           : undefined,
         duration: Math.round(s.ageMs / 1000),
       }));
