@@ -56,3 +56,23 @@
 ### How to run
 - `PORT=3011 OPS_DB_PATH=./ops.db npm run dev`
 - `curl http://127.0.0.1:3011/api/ops/events?limit=2`
+
+## Ops DB wiring (local dev)
+
+### Run
+```bash
+PORT=3012 OPS_DB_PATH="$HOME/.openclaw/workspace/ops.db" npm run dev
+```
+
+### Verify API (examples)
+```bash
+curl -sS "http://localhost:3012/api/ops/events?limit=3" | head -c 400
+curl -sS "http://localhost:3012/api/ops/agent-runs?limit=2" | head -c 400
+curl -sS "http://localhost:3012/api/ops/summary/today" | head -c 400
+```
+
+Expected: all return 200 with JSON payloads.
+
+### Notes
+- Ops Log UI page (`/ops-log`) now polls `/api/ops/events` (instead of the legacy SSE `/api/ops-log`).
+- DB access is via `sqlite3` CLI with `.mode json` and `.parameter` bindings; set `OPS_DB_PATH` to point at your `ops.db`.
