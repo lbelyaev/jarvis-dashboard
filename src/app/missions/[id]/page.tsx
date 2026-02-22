@@ -1,16 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Mission, MissionStep } from '@/lib/ops-db';
 
-const projectColors: Record<string, string> = {
-  boost: 'border-orange-500 text-orange-400 bg-orange-500/10',
-  x1: 'border-blue-500 text-blue-400 bg-blue-500/10',
-  ape: 'border-green-500 text-green-400 bg-green-500/10',
-  personal: 'border-purple-500 text-purple-400 bg-purple-500/10',
-};
+const ALL_STATUSES = ['planned', 'in-progress', 'done', 'failed', 'blocked', 'deferred', 'archived', 'backlog'];
 
 const statusColors: Record<string, string> = {
   planned: 'border-gray-500 text-gray-400 bg-gray-500/10',
@@ -23,8 +18,6 @@ const statusColors: Record<string, string> = {
   backlog: 'border-slate-500 text-slate-400 bg-slate-500/10',
 };
 
-const ALL_STATUSES = ['planned', 'in-progress', 'done', 'failed', 'blocked', 'deferred', 'archived', 'backlog'];
-
 const typeColors: Record<string, string> = {
   bug: 'bg-red-500/20 text-red-400',
   feature: 'bg-blue-500/20 text-blue-400',
@@ -32,17 +25,120 @@ const typeColors: Record<string, string> = {
   hotfix: 'bg-orange-500/20 text-orange-400',
 };
 
+interface Repo {
+  id: number;
+  name: string;
+  project: string | null;
+}
+
+// Editable text field component
+function EditableField({
+  label,
+  value,
+  onSave,
+  multiline = false,
+}: {
+  label: string;
+  value: string | null;
+  onSave: (value: string) => void;
+  multiline?: boolean;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value || '');
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    setEditValue(value || '');
+  }, [value]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    await onSave(editValue);
+    setIsSaving(false);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setEditValue(value || '');
+    setIsEditing(false);
+  };
+
+  if (!isEditing) {
+    return (
+      <div
+        onClick={() => setIsEditing(true)}
+        className="group cursor-pointer"
+      >
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-medium text-zinc-400">{label}</h3>
+          <span className="text-xs text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
+            Click to edit
+          </span>
+        </div>
+        <div className="text-zinc-300 whitespace-pre-wrap">
+          {value || <span className="text-zinc-600 italic">No {label.toLowerCase()} set</span>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-medium text-zinc-400">{label}</h3>
+        <div className="flex items-center gap-2">
+          {isSaving && <span className="text-xs text-zinc-500">Saving...</span>}
+        </div>
+      </div>
+      
+      {multiline ? (
+        <textarea
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500 min-h-[100px] resize-y"
+          autoFocus
+        />
+      ) : (
+        <input
+          type="text"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
+          autoFocus
+        />
+      )}
+      
+      <div className="flex items-center gap-2 mt-2">
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded transition-colors disabled:opacity-50"
+        >
+          Save
+        </button>
+        <button
+          onClick={handleCancel}
+          disabled={isSaving}
+          className="px-3 py-1 text-zinc-500 hover:text-zinc-300 text-sm transition-colors disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function MissionDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const missionId = params?.id as string;
   
   const [mission, setMission] = useState<Mission | null>(null);
   const [steps, setSteps] = useState<MissionStep[]>([]);
-  const [repos, setRepos] = useState<{id: number, name: string, project: string}[]>([]);
+  const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
 
   const fetchMission = useCallback(async () => {
     if (!missionId) return;
@@ -79,6 +175,7 @@ export default function MissionDetailPage() {
   const updateMission = async (updates: Partial<Mission>) => {
     if (!mission || saving) return;
     setSaving(true);
+    setSaveFeedback(null);
     try {
       const res = await fetch(`/api/missions/${mission.id}`, {
         method: 'PUT',
@@ -88,8 +185,12 @@ export default function MissionDetailPage() {
       if (!res.ok) throw new Error('Failed to update');
       const data = await res.json();
       setMission(data.mission);
+      setSaveFeedback('Saved');
+      setTimeout(() => setSaveFeedback(null), 2000);
     } catch (err) {
       console.error('Update failed:', err);
+      setSaveFeedback('Error');
+      setTimeout(() => setSaveFeedback(null), 2000);
     } finally {
       setSaving(false);
     }
@@ -106,10 +207,10 @@ export default function MissionDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
         <div className="flex items-center gap-3">
-          <div className="w-5 h-5 border-2 border-gray-700 border-t-gray-400 rounded-full animate-spin" />
-          <span className="text-gray-400">Loading mission...</span>
+          <div className="w-5 h-5 border-2 border-zinc-700 border-t-zinc-400 rounded-full animate-spin" />
+          <span className="text-zinc-400">Loading mission...</span>
         </div>
       </div>
     );
@@ -117,7 +218,7 @@ export default function MissionDetailPage() {
 
   if (error || !mission) {
     return (
-      <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
         <div className="text-center">
           <p className="text-red-400 mb-4">{error || 'Mission not found'}</p>
           <Link href="/missions" className="text-blue-400 hover:underline">
@@ -128,8 +229,7 @@ export default function MissionDetailPage() {
     );
   }
 
-  const projectKey = mission.project?.toLowerCase() || mission.repo_project?.toLowerCase() || 'personal';
-  const projectColor = projectColors[projectKey] || projectColors.personal;
+  const projectKey = mission.project?.toLowerCase() || 'personal';
   const statusColor = statusColors[mission.status] || statusColors.planned;
   const typeColor = mission.mission_type ? typeColors[mission.mission_type.toLowerCase()] : '';
 
@@ -143,12 +243,12 @@ export default function MissionDetailPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-zinc-950 text-white">
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Back button */}
         <Link 
           href="/missions" 
-          className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors"
+          className="inline-flex items-center gap-2 text-zinc-400 hover:text-white mb-6 transition-colors"
         >
           ← Back to missions
         </Link>
@@ -156,28 +256,35 @@ export default function MissionDetailPage() {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4 flex-wrap">
-            <span className={`px-3 py-1 rounded-full text-sm border ${projectColor}`}>
-              {mission.project || mission.repo_project || 'personal'}
+            <span className="px-3 py-1 rounded-full text-sm border border-zinc-700 text-zinc-400 bg-zinc-900/50">
+              {mission.project || 'personal'}
             </span>
             
-            {/* Editable Status */}
-            <select
-              value={mission.status}
-              onChange={handleStatusChange}
-              disabled={saving}
-              className={`px-3 py-1 rounded-full text-sm border bg-transparent cursor-pointer hover:opacity-80 ${statusColor}`}
-            >
-              {ALL_STATUSES.map(s => (
-                <option key={s} value={s}>{s.replace('-', ' ')}</option>
-              ))}
-            </select>
+            {/* Editable Status with feedback */}
+            <div className="relative">
+              <select
+                value={mission.status}
+                onChange={handleStatusChange}
+                disabled={saving}
+                className={`px-3 py-1 rounded-full text-sm border bg-transparent cursor-pointer hover:opacity-80 transition-all ${statusColor}`}
+              >
+                {ALL_STATUSES.map(s => (
+                  <option key={s} value={s}>{s.replace('-', ' ')}</option>
+                ))}
+              </select>
+              {saveFeedback && (
+                <span className="absolute -right-16 top-1/2 -translate-y-1/2 text-xs text-green-400">
+                  {saveFeedback}
+                </span>
+              )}
+            </div>
             
             {/* Editable Repo */}
             <select
               value={mission.repo_id || ''}
               onChange={handleRepoChange}
               disabled={saving}
-              className="px-3 py-1 rounded-full text-sm border bg-gray-800/50 border-gray-700 text-gray-300 cursor-pointer hover:opacity-80"
+              className="px-3 py-1 rounded-full text-sm border bg-zinc-800/50 border-zinc-700 text-zinc-300 cursor-pointer hover:border-zinc-600 transition-colors"
             >
               <option value="">No repo</option>
               {repos.map(r => (
@@ -190,61 +297,71 @@ export default function MissionDetailPage() {
                 {mission.mission_type}
               </span>
             )}
-            {mission.priority && (
-              <span className="px-3 py-1 rounded-full text-sm text-gray-400 bg-gray-800">
-                {mission.priority} priority
-              </span>
-            )}
           </div>
 
-          <h1 className="text-3xl font-bold mb-4">{mission.title}</h1>
-          
-          {mission.description && (
-            <p className="text-gray-400 text-lg leading-relaxed">{mission.description}</p>
-          )}
+          <h1 className="text-3xl font-bold mb-6">{mission.title}</h1>
         </div>
 
-        {/* Details Grid */}
-        <div className="grid md:grid-cols-2 gap-6 mb-8">
-          {mission.expected_outcome && (
-            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-gray-400 mb-2">Expected Outcome</h3>
-              <p className="text-gray-300">{mission.expected_outcome}</p>
-            </div>
-          )}
+        {/* Editable Fields - Full Width */}
+        <div className="space-y-6 mb-8">
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6">
+            <EditableField
+              label="Description"
+              value={mission.description}
+              onSave={(v) => updateMission({ description: v })}
+              multiline
+            />
+          </div>
 
-          {mission.definition_of_done && (
-            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-gray-400 mb-2">Definition of Done</h3>
-              <p className="text-gray-300 whitespace-pre-wrap">{mission.definition_of_done}</p>
-            </div>
-          )}
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6">
+            <EditableField
+              label="Expected Outcome"
+              value={mission.expected_outcome}
+              onSave={(v) => updateMission({ expected_outcome: v })}
+              multiline
+            />
+          </div>
 
-          <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-gray-400 mb-2">Dates</h3>
-            <div className="space-y-1 text-sm">
-              <p className="text-gray-300">
-                <span className="text-gray-500">Created:</span> {formatDate(mission.created_at)}
-              </p>
-              {mission.started_at && (
-                <p className="text-gray-300">
-                  <span className="text-gray-500">Started:</span> {formatDate(mission.started_at)}
-                </p>
-              )}
-              {mission.completed_at && (
-                <p className="text-gray-300">
-                  <span className="text-gray-500">Completed:</span> {formatDate(mission.completed_at)}
-                </p>
-              )}
-            </div>
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6">
+            <EditableField
+              label="Definition of Done"
+              value={mission.definition_of_done}
+              onSave={(v) => updateMission({ definition_of_done: v })}
+              multiline
+            />
           </div>
 
           {mission.outcome && (
-            <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-gray-400 mb-2">Outcome</h3>
-              <p className="text-gray-300">{mission.outcome}</p>
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium text-zinc-400">Outcome</h3>
+              </div>
+              <p className="text-zinc-300 whitespace-pre-wrap">{mission.outcome}</p>
             </div>
           )}
+        </div>
+
+        {/* Dates */}
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 mb-8">
+          <h3 className="text-sm font-medium text-zinc-400 mb-3">Dates</h3>
+          <div className="flex flex-wrap gap-8 text-sm">
+            <div>
+              <span className="text-zinc-500">Created:</span>{' '}
+              <span className="text-zinc-300">{formatDate(mission.created_at)}</span>
+            </div>
+            {mission.started_at && (
+              <div>
+                <span className="text-zinc-500">Started:</span>{' '}
+                <span className="text-zinc-300">{formatDate(mission.started_at)}</span>
+              </div>
+            )}
+            {mission.completed_at && (
+              <div>
+                <span className="text-zinc-500">Completed:</span>{' '}
+                <span className="text-zinc-300">{formatDate(mission.completed_at)}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Audit Trail */}
@@ -252,37 +369,22 @@ export default function MissionDetailPage() {
           <h2 className="text-lg font-semibold mb-4">Audit Trail</h2>
           
           {steps.length === 0 ? (
-            <p className="text-gray-500 italic">No audit trail available.</p>
+            <p className="text-zinc-500 italic">No audit trail available.</p>
           ) : (
             <div className="space-y-3">
               {steps.map((step, index) => (
                 <div 
                   key={step.id} 
-                  className="bg-gray-900/50 border border-gray-800 rounded-lg p-4"
+                  className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4"
                 >
                   <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center flex-shrink-0 text-sm font-medium">
+                    <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 text-sm font-medium">
                       {index + 1}
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-1">
-                        <h3 className="font-medium">{step.title}</h3>
-                        <span className={`text-xs px-2 py-0.5 rounded ${statusColors[step.status] || statusColors.planned}`}>
-                          {step.status}
-                        </span>
-                      </div>
-                      {step.agent_name && (
-                        <p className="text-sm text-gray-500 mb-2">Agent: {step.agent_name}</p>
-                      )}
-                      {step.outcome && (
-                        <p className="text-sm text-gray-400">{step.outcome}</p>
-                      )}
-                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
-                        <span>{formatDate(step.started_at)}</span>
-                        {step.cost > 0 && (
-                          <span className="text-amber-400">${step.cost.toFixed(2)}</span>
-                        )}
-                      </div>
+                      <p className="font-medium">{step.title}</p>
+                      {step.agent_name && <p className="text-sm text-zinc-500">Agent: {step.agent_name}</p>}
+                      {step.outcome && <p className="text-sm text-zinc-400 mt-1">{step.outcome}</p>}
                     </div>
                   </div>
                 </div>
