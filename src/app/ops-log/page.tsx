@@ -95,7 +95,32 @@ export default function OpsLogPage() {
 
           for (const entry of newEntries) {
             if (!existingIds.has(entry.id)) {
-              merged.push(entry);
+              // Deduplication logic: check if this entry is a duplicate
+              const isDuplicate = prev.some(existingEntry => {
+                // Check if same category and within 2 seconds
+                const timeDiff = Math.abs(new Date(entry.timestamp).getTime() - new Date(existingEntry.timestamp).getTime());
+                const withinTimeWindow = timeDiff <= 2000;
+                const sameCategory = entry.type === existingEntry.type;
+                
+                if (withinTimeWindow && sameCategory) {
+                  // Check if messages are similar (same tool name for tool events)
+                  if (entry.type === 'tool') {
+                    const toolNamePattern = /tool_call: (\w+)/;
+                    const entryTool = entry.message.match(toolNamePattern)?.[1];
+                    const existingTool = existingEntry.message.match(toolNamePattern)?.[1];
+                    return entryTool && existingTool && entryTool === existingTool;
+                  }
+                  // For non-tool events, check if messages are substantially similar
+                  const similarity = entry.message.toLowerCase().includes(existingEntry.message.toLowerCase().substring(0, 20)) ||
+                                    existingEntry.message.toLowerCase().includes(entry.message.toLowerCase().substring(0, 20));
+                  return similarity;
+                }
+                return false;
+              });
+
+              if (!isDuplicate) {
+                merged.push(entry);
+              }
             }
           }
 
@@ -131,8 +156,9 @@ export default function OpsLogPage() {
     }
   }, [entries, autoScroll]);
 
+  const costEntries = entries.filter((e) => /tokens|cost|\$/i.test(e.message));
   const filteredEntries = typeFilter === "$costs"
-    ? entries.filter((e) => /tokens|cost|\$/i.test(e.message))
+    ? costEntries
     : typeFilter
       ? entries.filter((e) => e.type === typeFilter)
       : entries;
@@ -184,7 +210,7 @@ export default function OpsLogPage() {
           onClick={() => setTypeFilter("$costs")}
           className={typeFilter === "$costs" ? "text-amber-400 border-amber-400/50" : "text-amber-400/70"}
         >
-          💰 Costs
+          💰 Costs ({costEntries.length})
         </Button>
         {uniqueTypes.map((type) => (
           <Button
