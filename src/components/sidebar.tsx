@@ -17,7 +17,7 @@ const navItems = [
   { href: "/agents", label: "Sub-Agents", icon: Bot },
   { href: "/ops-log", label: "Ops Log", icon: ScrollText },
   { href: "/costs", label: "Cost Analytics", icon: DollarSign },
-  { href: "/projects", label: "Projects", icon: FolderGit2 },
+  { href: "/missions", label: "Missions", icon: FolderGit2 },
 ];
 
 export function Sidebar() {

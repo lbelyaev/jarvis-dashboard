@@ -87,6 +87,7 @@ export interface Mission {
   repo_project?: string | null;
   expected_outcome: string | null;
   definition_of_done: string | null;
+  outcome: string | null;
   dependencies: string | null;
   created_at: string;
   updated_at: string;
@@ -97,9 +98,19 @@ export interface Mission {
 export interface MissionStep {
   id: number;
   mission_id: number;
+  step_number: number;
+  title: string;
+  description: string | null;
+  status: string;
+  outcome: string | null;
+  agent_id: string | null;
   agent_name: string;
   action: string;
   cost: number;
+  session_key: string | null;
+  brief: string | null;
+  plan: string | null;
+  output: string | null;
   started_at: string;
   completed_at: string | null;
 }
