@@ -76,3 +76,53 @@ Expected: all return 200 with JSON payloads.
 ### Notes
 - Ops Log UI page (`/ops-log`) now polls `/api/ops/events` (instead of the legacy SSE `/api/ops-log`).
 - DB access is via `sqlite3` CLI with `.mode json` and `.parameter` bindings; set `OPS_DB_PATH` to point at your `ops.db`.
+
+---
+
+## 2026-02-21: Ops Log UX Fixes Plan
+
+### Issues to Address
+
+1. **Duplicate events**: Tool calls appearing twice in the log
+   - One without agent context: "tool_call: cron 57ms ok (unknown)"  
+   - One with agent context: "tool_call: cron ok (unknown)"
+   - Need to investigate and deduplicate
+
+2. **Costs filter functionality**: Verify 💰 Costs filter works correctly
+   - Should filter to events containing "tokens", "$", or "cost"
+   - Uses regex `/tokens|cost|\$/i.test(e.message)`
+
+3. **Auto-scroll to bottom on page load**: Ensure page starts at newest events
+   - Uses `logEndRef` and `initialScrollDone` ref
+   - Should scroll instantly on first load, smoothly afterwards
+
+4. **500 limit verification**: Confirm API handles the increased limit
+   - `clampLimit` function with `maxValue` parameter
+   - Currently set to max 500 in `getOpsEvents`
+
+5. **Cost filter count badge**: Consider adding event count to filter button
+
+### Exploration Findings
+
+- **Plugin analysis**: Found ops-db-logger plugin at `~/.openclaw/workspace/.openclaw/extensions/ops-db-logger/index.ts`
+  - Registers `after_tool_call` event handler
+  - Only writes one event per tool call
+  - Also found message hook at `~/.openclaw/workspace/hooks/ops-db-logger/handler.ts` (messages only)
+
+- **Limit verification**: `src/lib/ops-db.ts` uses `clampLimit(limitParam, 200, 500)` - correct max of 500
+
+- **UI analysis**: `src/app/ops-log/page.tsx` has all expected functionality:
+  - Auto-scroll logic with `initialScrollDone` ref
+  - Costs filter using regex pattern
+  - 500 limit in API calls
+
+### Plan
+
+1. **Test current functionality** - Run dashboard and verify current behavior
+2. **Investigate duplicate events** - Check actual ops.db data for patterns  
+3. **Verify costs filter** - Test filtering with actual cost events
+4. **Test auto-scroll behavior** - Confirm instant scroll on page load
+5. **Add cost count badge** - Show number of cost events in filter
+6. **Fix any identified issues** - Based on testing results
+
+**Plan complete. Proceeding to execution.**

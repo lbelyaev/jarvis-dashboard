@@ -71,7 +71,7 @@ export default function OpsLogPage() {
     const poll = async () => {
       try {
         const params = new URLSearchParams();
-        params.set("limit", "200");
+        params.set("limit", "500");
         if (sinceRef.current) {
           params.set("since", sinceRef.current);
         }
@@ -123,15 +123,19 @@ export default function OpsLogPage() {
     };
   }, []);
 
+  const initialScrollDone = useRef(false);
   useEffect(() => {
     if (autoScroll && logEndRef.current) {
-      logEndRef.current.scrollIntoView({ behavior: "smooth" });
+      logEndRef.current.scrollIntoView({ behavior: initialScrollDone.current ? "smooth" : "instant" });
+      initialScrollDone.current = true;
     }
   }, [entries, autoScroll]);
 
-  const filteredEntries = typeFilter
-    ? entries.filter((e) => e.type === typeFilter)
-    : entries;
+  const filteredEntries = typeFilter === "$costs"
+    ? entries.filter((e) => /tokens|cost|\$/i.test(e.message))
+    : typeFilter
+      ? entries.filter((e) => e.type === typeFilter)
+      : entries;
 
   const uniqueTypes = [...new Set(entries.map((e) => e.type))].sort();
 
@@ -174,6 +178,14 @@ export default function OpsLogPage() {
         >
           All
         </Button>
+        <Button
+          variant={typeFilter === "$costs" ? "outline" : "ghost"}
+          size="sm"
+          onClick={() => setTypeFilter("$costs")}
+          className={typeFilter === "$costs" ? "text-amber-400 border-amber-400/50" : "text-amber-400/70"}
+        >
+          💰 Costs
+        </Button>
         {uniqueTypes.map((type) => (
           <Button
             key={type}
@@ -206,7 +218,7 @@ export default function OpsLogPage() {
               <div className="space-y-0.5">
                 {filteredEntries.map((entry) => (
                   <div key={entry.id} className="log-line flex gap-3 py-0.5">
-                    <span className="text-zinc-600 shrink-0 w-32">{entry.timestamp}</span>
+                    <span className="text-zinc-600 shrink-0 w-32">{new Date(entry.timestamp + "Z").toLocaleString()}</span>
                     <Badge
                       variant={typeBadgeVariant[entry.type] || "default"}
                       className="shrink-0 w-24 justify-center text-[11px]"
