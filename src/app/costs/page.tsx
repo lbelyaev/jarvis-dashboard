@@ -27,13 +27,22 @@ interface CostsData {
     byModel: Record<string, number>;
     byProject: Record<string, number>;
     sessions: number;
+    detailByModel?: Record<string, number>;
+    detailByProject?: Record<string, number>;
   }>;
+  range: string;
 }
+
+type DateRange = "last7" | "all" | "day";
 
 const MODEL_COLORS: Record<string, string> = {
   "claude-opus": "#f59e0b",
   "claude-sonnet": "#3b82f6",
   "claude-haiku": "#10b981",
+  "minimax": "#ec4899",
+  "kimi": "#8b5cf6",
+  "gpt": "#06b6d4",
+  "other": "#71717a",
 };
 
 const PROJECT_COLORS = [
@@ -47,54 +56,93 @@ const PROJECT_COLORS = [
   "#84cc16",
 ];
 
+// Custom tooltip showing model and project breakdown
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function CustomTooltip({ active, payload, label }: any) {
-  if (!active || !payload) return null;
+  if (!active || !payload || !payload.length) return null;
+  
+  // Get the full cost data from the payload
+  const chartData = payload[0]?.payload;
+  const byModel = chartData?.detailByModel || chartData?.byModel || {};
+  const byProject = chartData?.detailByProject || chartData?.byProject || {};
+  
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 shadow-lg">
-      <p className="text-xs text-zinc-400 mb-2">{label}</p>
-      {payload.map((entry: { name: string; value: number; color: string }, i: number) => (
-        <div key={i} className="flex items-center gap-2 text-sm">
-          <div
-            className="h-2 w-2 rounded-full"
-            style={{ backgroundColor: entry.color }}
-          />
-          <span className="text-zinc-300">{entry.name}:</span>
-          <span className="font-mono text-zinc-100">
-            ${entry.value.toFixed(2)}
-          </span>
-        </div>
-      ))}
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-3 shadow-lg min-w-[200px]">
+      <p className="text-sm font-medium text-zinc-100 mb-1">{label}</p>
+      <p className="text-lg font-bold text-amber-400 mb-2">
+        Total: ${(chartData?.total || 0).toFixed(2)}
+      </p>
+      
+      {/* By Model */}
+      {Object.keys(byModel).length > 0 && (
+        <>
+          <div className="border-t border-zinc-700 my-2" />
+          <p className="text-xs text-zinc-500 mb-1">By Model:</p>
+          {(Object.entries(byModel) as [string, number][])
+            .sort(([, a], [, b]) => b - a)
+            .map(([model, value]) => (
+              <div key={model} className="flex justify-between text-sm">
+                <span className="text-zinc-300">• {model}:</span>
+                <span className="font-mono text-zinc-100">${value.toFixed(2)}</span>
+              </div>
+            ))}
+        </>
+      )}
+      
+      {/* By Project */}
+      {Object.keys(byProject).length > 0 && (
+        <>
+          <div className="border-t border-zinc-700 my-2" />
+          <p className="text-xs text-zinc-500 mb-1">By Project:</p>
+          {(Object.entries(byProject) as [string, number][])
+            .sort(([, a], [, b]) => b - a)
+            .map(([project, value]) => (
+              <div key={project} className="flex justify-between text-sm">
+                <span className="text-zinc-300">• {project}:</span>
+                <span className="font-mono text-zinc-100">${value.toFixed(2)}</span>
+              </div>
+            ))}
+        </>
+      )}
     </div>
   );
 }
 
-// Get today's date in YYYY-MM-DD format for PST
-function getTodayPST(): string {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-}
 
 export default function CostsPage() {
-  const { data, loading } = useFetch<CostsData>("/api/costs", 60000);
+  const [dateRange, setDateRange] = useState<DateRange>("last7");
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-
+  
+  // Build URL with range query param (API filters server-side)
+  const apiUrl = useMemo(() => {
+    return `/api/costs?range=${dateRange === "day" ? "all" : dateRange}`;
+  }, [dateRange]);
+  
+  const { data, loading } = useFetch<CostsData>(apiUrl, 60000);
+  
   const costs = data?.costs || [];
-  const today = getTodayPST();
+  const today = useMemo(() => {
+    return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  }, []);
 
-  // Auto-select today on load if data exists
+  // Filter costs based on selection (API returns all, client filters for "day" view)
+  const filteredCosts = useMemo(() => {
+    if (dateRange === "day" && selectedDay) {
+      return costs.filter((c) => c.date === selectedDay);
+    }
+    // For "last7" and "all", API already filtered - just use costs
+    return costs;
+  }, [costs, dateRange, selectedDay]);
+
+  // Auto-select today when clicking a specific day on chart
   useEffect(() => {
-    if (!loading && costs.length > 0 && !selectedDay) {
+    if (!loading && costs.length > 0 && dateRange === "day" && !selectedDay) {
       const hasToday = costs.some((c) => c.date === today);
       if (hasToday) {
         setSelectedDay(today);
       }
     }
-  }, [loading, costs, today, selectedDay]);
-
-  // Update URL when selection changes
-  const handleSelectDay = (day: string | null) => {
-    setSelectedDay(day);
-  };
+  }, [loading, costs, today, dateRange, selectedDay]);
 
   // Get selected day's data
   const selectedDayData = useMemo(() => {
@@ -102,27 +150,24 @@ export default function CostsPage() {
     return costs.find((c) => c.date === selectedDay);
   }, [selectedDay, costs]);
 
-  // Prepare daily line chart data
-  const dailyData = costs.map((c) => ({
+  // Prepare daily line chart data (already sorted ascending by API)
+  const dailyData = filteredCosts.map((c) => ({
     date: c.date.slice(5), // MM-DD
     fullDate: c.date,
     total: c.total,
     sessions: c.sessions,
     isSelected: c.date === selectedDay,
+    // Include detailed breakdown for custom tooltip
+    detailByModel: c.detailByModel || c.byModel,
+    detailByProject: c.detailByProject || c.byProject,
   }));
 
-  // Prepare model breakdown data (filtered or total)
+  // Prepare model breakdown data (from filtered costs)
   const modelData = useMemo(() => {
-    if (selectedDayData) {
-      return Object.entries(selectedDayData.byModel).map(([model, total]) => ({
-        model,
-        total,
-        fill: MODEL_COLORS[model] || "#71717a",
-      }));
-    }
     const modelTotals: Record<string, number> = {};
-    for (const c of costs) {
-      for (const [model, amount] of Object.entries(c.byModel)) {
+    for (const c of filteredCosts) {
+      const byModel = c.detailByModel || c.byModel;
+      for (const [model, amount] of Object.entries(byModel)) {
         modelTotals[model] = (modelTotals[model] || 0) + amount;
       }
     }
@@ -131,21 +176,15 @@ export default function CostsPage() {
       total,
       fill: MODEL_COLORS[model] || "#71717a",
     }));
-  }, [selectedDayData, costs]);
+  }, [filteredCosts]);
 
-  // Prepare project breakdown data (filtered or total)
+  // Prepare project breakdown data (from filtered costs)
   const projectData = useMemo(() => {
-    if (selectedDayData) {
-      return Object.entries(selectedDayData.byProject).map(([name, value], i) => ({
-        name,
-        value,
-        fill: PROJECT_COLORS[i % PROJECT_COLORS.length],
-      }));
-    }
     const projectTotals: Record<string, number> = {};
-    for (const c of costs) {
-      for (const [project, count] of Object.entries(c.byProject)) {
-        projectTotals[project] = (projectTotals[project] || 0) + count;
+    for (const c of filteredCosts) {
+      const byProject = c.detailByProject || c.byProject;
+      for (const [project, amount] of Object.entries(byProject)) {
+        projectTotals[project] = (projectTotals[project] || 0) + amount;
       }
     }
     return Object.entries(projectTotals).map(([name, value], i) => ({
@@ -153,21 +192,20 @@ export default function CostsPage() {
       value,
       fill: PROJECT_COLORS[i % PROJECT_COLORS.length],
     }));
-  }, [selectedDayData, costs]);
+  }, [filteredCosts]);
 
   // Summary stats
-  const totalSpend = selectedDayData?.total ?? costs.reduce((sum, c) => sum + c.total, 0);
-  const totalSessions = selectedDayData?.sessions ?? costs.reduce((sum, c) => sum + c.sessions, 0);
-  const avgDaily = costs.length > 0 ? costs.reduce((sum, c) => sum + c.total, 0) / costs.length : 0;
+  const totalSpend = filteredCosts.reduce((sum, c) => sum + c.total, 0);
+  const totalSessions = filteredCosts.reduce((sum, c) => sum + c.sessions, 0);
+  const avgDaily = filteredCosts.length > 0 ? filteredCosts.reduce((sum, c) => sum + c.total, 0) / filteredCosts.length : 0;
 
-  // Handle click on chart point
+  // Handle click on chart point - switches to single day view
   const handleChartClick = (_data: unknown, index: number) => {
     if (dailyData[index]) {
+      setDateRange("day");
       setSelectedDay(dailyData[index].fullDate);
     }
   };
-
-  const clearSelection = () => setSelectedDay(null);
 
   const formatSelectedDate = (dateStr: string) => {
     const d = new Date(dateStr + "T00:00:00");
@@ -189,19 +227,45 @@ export default function CostsPage() {
           <h1 className="text-2xl font-bold text-zinc-100">Cost Analytics</h1>
           <p className="text-sm text-zinc-500">Token usage and spending breakdown</p>
         </div>
-        {selectedDay && (
+        {selectedDay ? (
           <div className="flex items-center gap-2">
             <span className="text-sm text-zinc-400">Showing:</span>
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-3 py-1 text-sm font-medium text-amber-400">
               {formatSelectedDate(selectedDay)}
               <button
-                onClick={clearSelection}
+                onClick={() => {
+                  setSelectedDay(null);
+                  setDateRange("last7");
+                }}
                 className="ml-1 hover:text-amber-200"
                 title="Clear filter"
               >
                 <X className="h-3 w-3" />
               </button>
             </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 rounded-lg bg-zinc-800 p-1">
+            <button
+              onClick={() => setDateRange("last7")}
+              className={`rounded px-3 py-1 text-sm transition-colors ${
+                dateRange === "last7"
+                  ? "bg-zinc-700 text-zinc-100"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              Last 7 Days
+            </button>
+            <button
+              onClick={() => setDateRange("all")}
+              className={`rounded px-3 py-1 text-sm transition-colors ${
+                dateRange === "all"
+                  ? "bg-zinc-700 text-zinc-100"
+                  : "text-zinc-400 hover:text-zinc-200"
+              }`}
+            >
+              All Time
+            </button>
           </div>
         )}
       </div>
@@ -212,7 +276,11 @@ export default function CostsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-amber-400" />
-              {selectedDay ? formatSelectedDate(selectedDay) : `Total (${costs.length}d)`}
+              {dateRange === "day" && selectedDay 
+                ? formatSelectedDate(selectedDay) 
+                : dateRange === "all" 
+                  ? "All Time" 
+                  : `Last 7 Days`}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -226,22 +294,22 @@ export default function CostsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-blue-400" />
-              {selectedDay ? "Sessions" : "Avg Daily"}
+              {dateRange === "day" && selectedDay ? "Sessions" : "Avg Daily"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              {selectedDay ? totalSessions : `$${avgDaily.toFixed(2)}`}
+              {dateRange === "day" && selectedDay ? totalSessions : `$${avgDaily.toFixed(2)}`}
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>{selectedDay ? "" : "Total Sessions"}</CardTitle>
+            <CardTitle>{dateRange === "day" && selectedDay ? "" : "Total Sessions"}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{selectedDay ? "—" : totalSessions}</div>
+            <div className="text-3xl font-bold">{dateRange === "day" && selectedDay ? "—" : totalSessions}</div>
           </CardContent>
         </Card>
       </div>
@@ -252,7 +320,9 @@ export default function CostsPage() {
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
             Daily Spend
-            {!selectedDay && <span className="text-xs text-zinc-500">(click a day to filter)</span>}
+            <span className="text-xs text-zinc-500">
+              {dateRange === "all" ? "(All Time)" : dateRange === "last7" ? "(Last 7 Days)" : `(Selected: ${formatSelectedDate(selectedDay!)})`}
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>

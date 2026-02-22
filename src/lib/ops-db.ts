@@ -74,6 +74,111 @@ export type AgentRun = {
   created_at: string;
 };
 
+export interface Mission {
+  id: number;
+  title: string;
+  description: string | null;
+  mission_type: string | null;
+  status: string;
+  priority: string | null;
+  project: string | null;
+  repo_id: number | null;
+  repo_name?: string | null;
+  repo_project?: string | null;
+  expected_outcome: string | null;
+  definition_of_done: string | null;
+  dependencies: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+}
+
+export interface MissionStep {
+  id: number;
+  mission_id: number;
+  agent_name: string;
+  action: string;
+  cost: number;
+  started_at: string;
+  completed_at: string | null;
+}
+
+export interface MissionFilters {
+  project?: string[];
+  status?: string[];
+  type?: string[];
+  search?: string;
+}
+
+export async function getMissions(filters: MissionFilters = {}): Promise<Mission[]> {
+  let query = `
+    SELECT m.*, r.name as repo_name, r.project as repo_project
+    FROM missions m
+    LEFT JOIN repos r ON m.repo_id = r.id
+    WHERE 1=1
+  `;
+  const params: any[] = [];
+
+  if (filters.project && filters.project.length > 0) {
+    const placeholders = filters.project.map(() => '?').join(', ');
+    query += ` AND (m.project IN (${placeholders}) OR r.project IN (${placeholders}))`;
+    params.push(...filters.project, ...filters.project);
+  }
+
+  if (filters.status && filters.status.length > 0) {
+    const placeholders = filters.status.map(() => '?').join(', ');
+    query += ` AND m.status IN (${placeholders})`;
+    params.push(...filters.status);
+  }
+
+  if (filters.type && filters.type.length > 0) {
+    const placeholders = filters.type.map(() => '?').join(', ');
+    query += ` AND m.mission_type IN (${placeholders})`;
+    params.push(...filters.type);
+  }
+
+  if (filters.search) {
+    query += ` AND (m.title LIKE ? OR m.description LIKE ?)`;
+    const searchTerm = `%${filters.search}%`;
+    params.push(searchTerm, searchTerm);
+  }
+
+  query += ` ORDER BY m.created_at DESC`;
+
+  return queryDb<Mission>(query, params);
+}
+
+export async function getMissionById(id: number): Promise<Mission | null> {
+  const sql = `
+    SELECT m.*, r.name as repo_name, r.project as repo_project
+    FROM missions m
+    LEFT JOIN repos r ON m.repo_id = r.id
+    WHERE m.id = ?
+  `;
+  const rows = await queryDb<Mission>(sql, [id]);
+  return rows[0] || null;
+}
+
+export async function getMissionSteps(missionId: number): Promise<MissionStep[]> {
+  const sql = `
+    SELECT * FROM mission_steps 
+    WHERE mission_id = ? 
+    ORDER BY started_at DESC
+  `;
+  return queryDb<MissionStep>(sql, [missionId]);
+}
+
+export async function getProjects(): Promise<string[]> {
+  const sql = `
+    SELECT DISTINCT project FROM repos WHERE project IS NOT NULL
+    UNION
+    SELECT DISTINCT project FROM missions WHERE project IS NOT NULL
+  `;
+  const results = await queryDb<{ project: string }>(sql);
+  return [...new Set(results.map(r => r.project))];
+}
+
 export async function getOpsEvents(limitParam: string | null, sinceParam: string | null): Promise<OpsEvent[]> {
   const limit = clampLimit(limitParam, 200, 500);
   const sinceIso = normalizeSinceIso(sinceParam);
