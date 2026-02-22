@@ -83,13 +83,13 @@ export async function getOpsEvents(limitParam: string | null, sinceParam: string
       SELECT id, timestamp, category, event, mission_id, agent_run_id, pr_id, repo_id
       FROM ops_events
       WHERE timestamp >= ?1
-      ORDER BY datetime(timestamp) DESC
+      ORDER BY id DESC
       LIMIT ?2
     `
     : `
       SELECT id, timestamp, category, event, mission_id, agent_run_id, pr_id, repo_id
       FROM ops_events
-      ORDER BY datetime(timestamp) DESC
+      ORDER BY id DESC
       LIMIT ?1
     `;
 

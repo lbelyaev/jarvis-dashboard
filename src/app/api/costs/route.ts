@@ -138,7 +138,10 @@ async function parseJSONLFile(
         const costTotal = obj.message?.usage?.cost?.total;
         if (costTotal && costTotal > 0) {
           const timestamp = obj.timestamp || "";
-          const date = timestamp.split("T")[0];
+          // Parse as UTC and convert to local date
+          const date = timestamp
+            ? new Date(timestamp).toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" })
+            : "";
           if (date) {
             entries.push({ date, cost: costTotal });
           }

@@ -114,7 +114,7 @@ export default function OpsLogPage() {
         if (!mounted) return;
 
         const orderedAsc = [...fetchedEvents].sort(
-          (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+          (a, b) => a.id - b.id
         );
         const newEntries = orderedAsc.map(mapEventToEntry);
 
@@ -296,7 +296,7 @@ export default function OpsLogPage() {
                 <div className="space-y-0.5">
                   {filteredEntries.map((entry) => (
                     <div key={entry.id} className="log-line flex gap-3 py-0.5">
-                      <span className="text-zinc-600 shrink-0 w-32">{new Date(entry.timestamp + "Z").toLocaleString()}</span>
+                      <span className="text-zinc-600 shrink-0 w-32">{entry.timestamp}</span>
                       <Badge
                         variant={typeBadgeVariant[entry.type] || "default"}
                         className="shrink-0 w-24 justify-center text-[11px]"

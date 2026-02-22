@@ -1,8 +1,9 @@
 "use client";
 
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-fetch";
-import { DollarSign, TrendingUp, BarChart3, PieChart as PieIcon } from "lucide-react";
+import { DollarSign, TrendingUp, BarChart3, PieChart as PieIcon, X } from "lucide-react";
 import {
   LineChart,
   Line,
@@ -68,48 +69,110 @@ function CustomTooltip({ active, payload, label }: any) {
   );
 }
 
+// Get today's date in YYYY-MM-DD format for PST
+function getTodayPST(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+}
+
 export default function CostsPage() {
   const { data, loading } = useFetch<CostsData>("/api/costs", 60000);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const costs = data?.costs || [];
+  const today = getTodayPST();
+
+  // Auto-select today on load if data exists
+  useEffect(() => {
+    if (!loading && costs.length > 0 && !selectedDay) {
+      const hasToday = costs.some((c) => c.date === today);
+      if (hasToday) {
+        setSelectedDay(today);
+      }
+    }
+  }, [loading, costs, today, selectedDay]);
+
+  // Update URL when selection changes
+  const handleSelectDay = (day: string | null) => {
+    setSelectedDay(day);
+  };
+
+  // Get selected day's data
+  const selectedDayData = useMemo(() => {
+    if (!selectedDay) return null;
+    return costs.find((c) => c.date === selectedDay);
+  }, [selectedDay, costs]);
 
   // Prepare daily line chart data
   const dailyData = costs.map((c) => ({
     date: c.date.slice(5), // MM-DD
+    fullDate: c.date,
     total: c.total,
     sessions: c.sessions,
+    isSelected: c.date === selectedDay,
   }));
 
-  // Prepare model breakdown data
-  const modelTotals: Record<string, number> = {};
-  for (const c of costs) {
-    for (const [model, amount] of Object.entries(c.byModel)) {
-      modelTotals[model] = (modelTotals[model] || 0) + amount;
+  // Prepare model breakdown data (filtered or total)
+  const modelData = useMemo(() => {
+    if (selectedDayData) {
+      return Object.entries(selectedDayData.byModel).map(([model, total]) => ({
+        model,
+        total,
+        fill: MODEL_COLORS[model] || "#71717a",
+      }));
     }
-  }
-  const modelData = Object.entries(modelTotals).map(([model, total]) => ({
-    model,
-    total,
-    fill: MODEL_COLORS[model] || "#71717a",
-  }));
+    const modelTotals: Record<string, number> = {};
+    for (const c of costs) {
+      for (const [model, amount] of Object.entries(c.byModel)) {
+        modelTotals[model] = (modelTotals[model] || 0) + amount;
+      }
+    }
+    return Object.entries(modelTotals).map(([model, total]) => ({
+      model,
+      total,
+      fill: MODEL_COLORS[model] || "#71717a",
+    }));
+  }, [selectedDayData, costs]);
 
-  // Prepare project breakdown data
-  const projectTotals: Record<string, number> = {};
-  for (const c of costs) {
-    for (const [project, count] of Object.entries(c.byProject)) {
-      projectTotals[project] = (projectTotals[project] || 0) + count;
+  // Prepare project breakdown data (filtered or total)
+  const projectData = useMemo(() => {
+    if (selectedDayData) {
+      return Object.entries(selectedDayData.byProject).map(([name, value], i) => ({
+        name,
+        value,
+        fill: PROJECT_COLORS[i % PROJECT_COLORS.length],
+      }));
     }
-  }
-  const projectData = Object.entries(projectTotals).map(([name, value], i) => ({
-    name,
-    value,
-    fill: PROJECT_COLORS[i % PROJECT_COLORS.length],
-  }));
+    const projectTotals: Record<string, number> = {};
+    for (const c of costs) {
+      for (const [project, count] of Object.entries(c.byProject)) {
+        projectTotals[project] = (projectTotals[project] || 0) + count;
+      }
+    }
+    return Object.entries(projectTotals).map(([name, value], i) => ({
+      name,
+      value,
+      fill: PROJECT_COLORS[i % PROJECT_COLORS.length],
+    }));
+  }, [selectedDayData, costs]);
 
   // Summary stats
-  const totalSpend = costs.reduce((sum, c) => sum + c.total, 0);
-  const totalSessions = costs.reduce((sum, c) => sum + c.sessions, 0);
-  const avgDaily = costs.length > 0 ? totalSpend / costs.length : 0;
+  const totalSpend = selectedDayData?.total ?? costs.reduce((sum, c) => sum + c.total, 0);
+  const totalSessions = selectedDayData?.sessions ?? costs.reduce((sum, c) => sum + c.sessions, 0);
+  const avgDaily = costs.length > 0 ? costs.reduce((sum, c) => sum + c.total, 0) / costs.length : 0;
+
+  // Handle click on chart point
+  const handleChartClick = (_data: unknown, index: number) => {
+    if (dailyData[index]) {
+      setSelectedDay(dailyData[index].fullDate);
+    }
+  };
+
+  const clearSelection = () => setSelectedDay(null);
+
+  const formatSelectedDate = (dateStr: string) => {
+    const d = new Date(dateStr + "T00:00:00");
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
 
   if (loading) {
     return (
@@ -121,9 +184,26 @@ export default function CostsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-100">Cost Analytics</h1>
-        <p className="text-sm text-zinc-500">Token usage and spending breakdown</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-zinc-100">Cost Analytics</h1>
+          <p className="text-sm text-zinc-500">Token usage and spending breakdown</p>
+        </div>
+        {selectedDay && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-zinc-400">Showing:</span>
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/20 px-3 py-1 text-sm font-medium text-amber-400">
+              {formatSelectedDate(selectedDay)}
+              <button
+                onClick={clearSelection}
+                className="ml-1 hover:text-amber-200"
+                title="Clear filter"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -132,7 +212,7 @@ export default function CostsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <DollarSign className="h-4 w-4 text-amber-400" />
-              Total Spend ({costs.length}d)
+              {selectedDay ? formatSelectedDate(selectedDay) : `Total (${costs.length}d)`}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -146,22 +226,22 @@ export default function CostsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-blue-400" />
-              Avg Daily
+              {selectedDay ? "Sessions" : "Avg Daily"}
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold">
-              ${avgDaily.toFixed(2)}
+              {selectedDay ? totalSessions : `$${avgDaily.toFixed(2)}`}
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Total Sessions</CardTitle>
+            <CardTitle>{selectedDay ? "" : "Total Sessions"}</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{totalSessions}</div>
+            <div className="text-3xl font-bold">{selectedDay ? "—" : totalSessions}</div>
           </CardContent>
         </Card>
       </div>
@@ -172,6 +252,7 @@ export default function CostsPage() {
           <CardTitle className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4" />
             Daily Spend
+            {!selectedDay && <span className="text-xs text-zinc-500">(click a day to filter)</span>}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -194,6 +275,8 @@ export default function CostsPage() {
                   strokeWidth={2}
                   dot={{ fill: "#f59e0b", r: 4 }}
                   activeDot={{ r: 6 }}
+                  onClick={() => {}}
+                  style={{ cursor: "pointer" }}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -207,7 +290,7 @@ export default function CostsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
-              By Model
+              {selectedDay ? `By Model (${formatSelectedDate(selectedDay)})` : "By Model (All Time)"}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -237,7 +320,7 @@ export default function CostsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <PieIcon className="h-4 w-4" />
-              By Project
+              {selectedDay ? `By Project (${formatSelectedDate(selectedDay)})` : "By Project (All Time)"}
             </CardTitle>
           </CardHeader>
           <CardContent>

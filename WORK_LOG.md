@@ -1,61 +1,32 @@
-# Jarvis Dashboard - Duplicate Events Fix + Cost Badge
+# Work Log - Selected Day Feature
 
-## Task Overview
-1. Fix duplicate tool events in ops.db with client-side deduplication
-2. Add cost count badge to the 💰 Costs filter button
+**Date:** 2026-02-21
 
-## Phase 1: Analysis (DONE)
+**Task:** Add "selected day" click-to-select functionality to jarvis-dashboard costs page
 
-### Current State
-- React/Next.js app fetching from `/api/ops/events`
-- Events stored in `ops_events` table in SQLite
-- UI in `src/app/ops-log/page.tsx`
-- Duplication pattern: Each tool call appears twice - once without agent context, once with agent context in parentheses
-- Cost filter exists but no count badge
+## Changes Made to `src/app/costs/page.tsx`
 
-### Files to Modify
-- `src/app/ops-log/page.tsx` - Add deduplication logic and cost count badge
+### 1. Added State & Effects
+- Added `selectedDay` state (string | null) to track the currently selected day
+- Added `useEffect` to auto-select today if data exists for the current day (PST timezone)
 
-### Deduplication Strategy
-When merging new entries, skip any event where:
-- Timestamp + category match existing entry within 2 seconds
-- Event text contains same tool name (similar content)
+### 2. Made Daily Spend Chart Clickable
+- Added `onClick={handleChartClick}` handler to the Line component
+- Added visual feedback: selected day dot is larger (r=6), white fill, with pointer cursor
+- Added hint text "(click a day to filter)" below the chart
 
-### Cost Badge Strategy
-Count events matching `/tokens|cost|\$/i` regex in current filtered dataset and display in button text.
+### 3. Filtered Breakdowns
+- Model breakdown now shows only the selected day's data when a day is selected (via `selectedDayData`)
+- Project breakdown follows the same pattern
+- When no day is selected, shows aggregated totals across all days
 
-## Phase 2: Implementation
+### 4. Selected Day Indicator
+- Added badge in the header showing "Showing: Feb 21" with an X button to clear
+- Summary cards update to show day-specific stats (e.g., "Sessions" instead of "Avg Daily")
 
-### Step 1: Add deduplication logic to the merge function
-### Step 2: Add cost count to the Costs button
-### Step 3: Test the changes
-### Step 4: Commit with conventional commit message
+### 5. Graceful Handling
+- Added `useMemo` for data computations
+- Handles case where selected day has no data gracefully (falls back to totals)
 
----
-
-## Results ✅
-
-### Completed Changes
-
-**1. Deduplication Logic**
-- Added smart deduplication in the merge function
-- Checks for events within same category and 2-second window
-- For tool events: matches by tool name pattern
-- For other events: checks message similarity
-- Successfully prevents duplicate tool call entries
-
-**2. Cost Count Badge**
-- Added `costEntries` calculation using `/tokens|cost|\$/i` regex
-- Updated Costs button to display `💰 Costs (X)` format
-- Count updates dynamically with the dataset
-
-### Technical Implementation
-- Modified `src/app/ops-log/page.tsx` with deduplication logic in the merge function
-- Added cost count calculation and display in filter button
-- Build compiles successfully
-- Dev server running on PORT=3012
-
-### Verification
-- Build passes: `npm run build` ✓
-- Dev server starts successfully ✓
-- Changes committed with conventional commit message
+## Summary
+The costs page now allows users to click on any day in the Daily Spend chart to filter the "By Model" and "By Project" breakdowns to show only that day's data. The selected day is clearly indicated with a badge, and users can clear the filter with the X button. If today's data exists, it's automatically selected on page load.
