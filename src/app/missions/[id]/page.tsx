@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Mission, MissionStep } from '@/lib/ops-db';
+import { AgentRun } from '@/lib/ops-db';
 
 const ALL_STATUSES = ['planned', 'in-progress', 'done', 'failed', 'blocked', 'deferred', 'archived', 'backlog'];
 
@@ -18,6 +18,13 @@ const statusColors: Record<string, string> = {
   backlog: 'border-slate-500 text-slate-400 bg-slate-500/10',
 };
 
+const runStatusColors: Record<string, string> = {
+  completed: 'border-green-500 text-green-400 bg-green-500/10',
+  failed: 'border-red-500 text-red-400 bg-red-500/10',
+  running: 'border-yellow-500 text-yellow-400 bg-yellow-500/10',
+  pending: 'border-gray-500 text-gray-400 bg-gray-500/10',
+};
+
 const typeColors: Record<string, string> = {
   bug: 'bg-red-500/20 text-red-400',
   feature: 'bg-blue-500/20 text-blue-400',
@@ -29,6 +36,24 @@ interface Repo {
   id: number;
   name: string;
   project: string | null;
+}
+
+interface Mission {
+  id: number;
+  title: string;
+  description: string | null;
+  mission_type: string | null;
+  status: string;
+  priority: string | null;
+  project: string | null;
+  repo_id: number | null;
+  expected_outcome: string | null;
+  definition_of_done: string | null;
+  outcome: string | null;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
 }
 
 // Editable text field component
@@ -128,12 +153,85 @@ function EditableField({
   );
 }
 
+// Agent Run Card (Commit)
+function AgentRunCard({ run, index }: { run: AgentRun; index: number }) {
+  const formatDuration = (sec: number | null) => {
+    if (!sec) return 'N/A';
+    if (sec < 60) return `${sec.toFixed(1)}s`;
+    return `${(sec / 60).toFixed(1)}m`;
+  };
+
+  const formatDate = (dateStr: string) => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const statusColor = runStatusColors[run.status] || runStatusColors.pending;
+
+  return (
+    <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors">
+      <div className="flex items-start gap-4">
+        {/* Index */}
+        <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 text-sm font-medium text-zinc-400">
+          {index + 1}
+        </div>
+        
+        <div className="flex-1 min-w-0">
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            <span className="font-medium text-zinc-200">{run.label}</span>
+            <span className={`px-2 py-0.5 text-xs rounded border ${statusColor}`}>
+              {run.status}
+            </span>
+          </div>
+
+          {/* Model & Thinking */}
+          <div className="flex items-center gap-2 mb-2 text-sm">
+            <span className="text-zinc-500">{run.model}</span>
+            {run.thinking_level && (
+              <span className="text-zinc-600">· {run.thinking_level}</span>
+            )}
+          </div>
+
+          {/* Stats */}
+          <div className="flex items-center gap-4 mb-2 text-sm text-zinc-500">
+            <span>⏱ {formatDuration(run.duration_sec)}</span>
+            {run.cost_usd != null && <span className="text-amber-400">${run.cost_usd.toFixed(4)}</span>}
+            {run.tokens_input != null && (
+              <span>{run.tokens_input.toLocaleString()} → {run.tokens_output?.toLocaleString()} tokens</span>
+            )}
+            <span>{formatDate(run.started_at)}</span>
+          </div>
+
+          {/* Error */}
+          {run.error && (
+            <div className="bg-red-900/20 border border-red-800/50 rounded p-2 mt-2">
+              <pre className="text-red-400 text-xs whitespace-pre-wrap">{run.error}</pre>
+            </div>
+          )}
+
+          {/* Result Summary */}
+          {run.result_summary && !run.error && (
+            <div className="mt-2">
+              <p className="text-zinc-400 text-sm line-clamp-3">{run.result_summary}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function MissionDetailPage() {
   const params = useParams();
   const missionId = params?.id as string;
   
   const [mission, setMission] = useState<Mission | null>(null);
-  const [steps, setSteps] = useState<MissionStep[]>([]);
+  const [runs, setRuns] = useState<AgentRun[]>([]);
   const [repos, setRepos] = useState<Repo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -147,7 +245,7 @@ export default function MissionDetailPage() {
       if (!res.ok) throw new Error('Failed to fetch mission');
       const data = await res.json();
       setMission(data.mission);
-      setSteps(data.steps || []);
+      setRuns(data.runs || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -364,30 +462,21 @@ export default function MissionDetailPage() {
           </div>
         </div>
 
-        {/* Audit Trail */}
+        {/* Audit Trail - Agent Runs */}
         <div>
-          <h2 className="text-lg font-semibold mb-4">Audit Trail</h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold">Commits</h2>
+            <span className="text-sm text-zinc-500">{runs.length} agent run{runs.length !== 1 ? 's' : ''}</span>
+          </div>
           
-          {steps.length === 0 ? (
-            <p className="text-zinc-500 italic">No audit trail available.</p>
+          {runs.length === 0 ? (
+            <div className="text-zinc-500 italic py-4">
+              No agent runs recorded for this mission.
+            </div>
           ) : (
             <div className="space-y-3">
-              {steps.map((step, index) => (
-                <div 
-                  key={step.id} 
-                  className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4"
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 text-sm font-medium">
-                      {index + 1}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-medium">{step.title}</p>
-                      {step.agent_name && <p className="text-sm text-zinc-500">Agent: {step.agent_name}</p>}
-                      {step.outcome && <p className="text-sm text-zinc-400 mt-1">{step.outcome}</p>}
-                    </div>
-                  </div>
-                </div>
+              {runs.map((run, index) => (
+                <AgentRunCard key={run.id} run={run} index={index} />
               ))}
             </div>
           )}

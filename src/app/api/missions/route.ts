@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMissions, getMissionById, getMissionSteps, getProjects } from '@/lib/ops-db';
+import { getMissions, getMissionById, getMissionSteps, getProjects, getAgentRunsForMission } from '@/lib/ops-db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -18,7 +18,8 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'Mission not found' }, { status: 404 });
       }
       const steps = await getMissionSteps(parseInt(id));
-      return NextResponse.json({ mission, steps });
+      const runs = await getAgentRunsForMission(parseInt(id));
+      return NextResponse.json({ mission, steps, runs });
     }
 
     // If fetching project list
