@@ -180,6 +180,67 @@ export async function getMissionSteps(missionId: number): Promise<MissionStep[]>
   return queryDb<MissionStep>(sql, [missionId]);
 }
 
+export interface Repo {
+  id: number;
+  name: string;
+  project: string | null;
+}
+
+export async function getRepos(): Promise<Repo[]> {
+  const sql = `
+    SELECT id, name, project FROM repos ORDER BY name
+  `;
+  return queryDb<Repo>(sql);
+}
+
+export async function updateMission(
+  id: number,
+  updates: Partial<Omit<Mission, 'id' | 'created_at' | 'updated_at'>>
+): Promise<Mission | null> {
+  // Build SET clause dynamically
+  const setClauses: string[] = [];
+  const paramValues: (string | number)[] = [];
+  
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined && value !== null) {
+      setClauses.push(`${key} = ?`);
+      paramValues.push(value as string | number);
+    } else if (value === null) {
+      setClauses.push(`${key} = NULL`);
+    }
+  }
+  
+  if (setClauses.length === 0) {
+    return getMissionById(id);
+  }
+  
+  // Add updated_at
+  setClauses.push("updated_at = datetime('now')");
+  
+  const sql = `
+    UPDATE missions 
+    SET ${setClauses.join(', ')}
+    WHERE id = ${id}
+  `;
+  
+  // Build sqlite3 command
+  let command = `.mode json\n`;
+  paramValues.forEach((value, idx) => {
+    command += `.parameter set ?${idx + 1} ${JSON.stringify(String(value))}\n`;
+  });
+  command += sql;
+  
+  try {
+    await execFileAsync("sqlite3", [config.opsDbPath, command], { timeout: 3000 });
+  } catch (e) {
+    console.error("Update failed:", e);
+    throw e;
+  }
+  
+  // Fetch with repo info
+  return getMissionById(id);
+}
+
 export async function getProjects(): Promise<string[]> {
   const sql = `
     SELECT DISTINCT project FROM repos WHERE project IS NOT NULL

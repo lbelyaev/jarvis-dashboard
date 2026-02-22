@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Mission, MissionStep } from '@/lib/ops-db';
@@ -19,7 +19,11 @@ const statusColors: Record<string, string> = {
   failed: 'border-red-500 text-red-400 bg-red-500/10',
   blocked: 'border-red-500 text-red-400 bg-red-500/10',
   deferred: 'border-gray-500 text-gray-400 bg-gray-500/10',
+  archived: 'border-zinc-600 text-zinc-500 bg-zinc-800/50',
+  backlog: 'border-slate-500 text-slate-400 bg-slate-500/10',
 };
+
+const ALL_STATUSES = ['planned', 'in-progress', 'done', 'failed', 'blocked', 'deferred', 'archived', 'backlog'];
 
 const typeColors: Record<string, string> = {
   bug: 'bg-red-500/20 text-red-400',
@@ -35,28 +39,70 @@ export default function MissionDetailPage() {
   
   const [mission, setMission] = useState<Mission | null>(null);
   const [steps, setSteps] = useState<MissionStep[]>([]);
+  const [repos, setRepos] = useState<{id: number, name: string, project: string}[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
+  const fetchMission = useCallback(async () => {
     if (!missionId) return;
-    
-    const fetchMission = async () => {
-      try {
-        const res = await fetch(`/api/missions?id=${missionId}`);
-        if (!res.ok) throw new Error('Failed to fetch mission');
-        const data = await res.json();
-        setMission(data.mission);
-        setSteps(data.steps || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchMission();
+    try {
+      const res = await fetch(`/api/missions?id=${missionId}`);
+      if (!res.ok) throw new Error('Failed to fetch mission');
+      const data = await res.json();
+      setMission(data.mission);
+      setSteps(data.steps || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setLoading(false);
+    }
   }, [missionId]);
+
+  const fetchRepos = useCallback(async () => {
+    try {
+      const res = await fetch('/api/repos');
+      if (res.ok) {
+        const data = await res.json();
+        setRepos(data.repos || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch repos:', err);
+    }
+  }, []);
+    
+  useEffect(() => {
+    fetchMission();
+    fetchRepos();
+  }, [fetchMission, fetchRepos]);
+
+  const updateMission = async (updates: Partial<Mission>) => {
+    if (!mission || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/missions/${mission.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates),
+      });
+      if (!res.ok) throw new Error('Failed to update');
+      const data = await res.json();
+      setMission(data.mission);
+    } catch (err) {
+      console.error('Update failed:', err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    updateMission({ status: e.target.value });
+  };
+
+  const handleRepoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const repoId = e.target.value ? parseInt(e.target.value) : null;
+    updateMission({ repo_id: repoId });
+  };
 
   if (loading) {
     return (
@@ -109,13 +155,36 @@ export default function MissionDetailPage() {
 
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
             <span className={`px-3 py-1 rounded-full text-sm border ${projectColor}`}>
               {mission.project || mission.repo_project || 'personal'}
             </span>
-            <span className={`px-3 py-1 rounded-full text-sm border ${statusColor}`}>
-              {mission.status}
-            </span>
+            
+            {/* Editable Status */}
+            <select
+              value={mission.status}
+              onChange={handleStatusChange}
+              disabled={saving}
+              className={`px-3 py-1 rounded-full text-sm border bg-transparent cursor-pointer hover:opacity-80 ${statusColor}`}
+            >
+              {ALL_STATUSES.map(s => (
+                <option key={s} value={s}>{s.replace('-', ' ')}</option>
+              ))}
+            </select>
+            
+            {/* Editable Repo */}
+            <select
+              value={mission.repo_id || ''}
+              onChange={handleRepoChange}
+              disabled={saving}
+              className="px-3 py-1 rounded-full text-sm border bg-gray-800/50 border-gray-700 text-gray-300 cursor-pointer hover:opacity-80"
+            >
+              <option value="">No repo</option>
+              {repos.map(r => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+            
             {mission.mission_type && (
               <span className={`px-3 py-1 rounded-full text-sm ${typeColor}`}>
                 {mission.mission_type}
