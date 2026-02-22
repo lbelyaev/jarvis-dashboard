@@ -62,8 +62,37 @@ export default function OpsLogPage() {
   const [connected, setConnected] = useState(false);
   const [autoScroll, setAutoScroll] = useState(true);
   const [typeFilter, setTypeFilter] = useState<string>("");
+  const [hasScrolledToBottomOnce, setHasScrolledToBottomOnce] = useState(false);
+  const [newEventsCount, setNewEventsCount] = useState(0);
   const logEndRef = useRef<HTMLDivElement>(null);
   const sinceRef = useRef<string | null>(null);
+  
+  // Helper function to check if user is near bottom (within 100px)
+  const isNearBottom = () => {
+    if (!scrollContainerRef.current) return false;
+    const container = scrollContainerRef.current;
+    return container.scrollTop + container.clientHeight >= container.scrollHeight - 100;
+  };
+
+  // Helper function to scroll to bottom instantly
+  const scrollToBottom = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  };
+
+  // Handle clicking the new events indicator
+  const handleNewEventsClick = () => {
+    scrollToBottom();
+    setNewEventsCount(0);
+  };
+
+  // Handle scroll events to clear new events counter when user scrolls near bottom
+  const handleScroll = () => {
+    if (isNearBottom() && newEventsCount > 0) {
+      setNewEventsCount(0);
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -92,6 +121,7 @@ export default function OpsLogPage() {
         setEntries((prev) => {
           const existingIds = new Set(prev.map((entry) => entry.id));
           const merged = [...prev];
+          let newEventCount = 0;
 
           for (const entry of newEntries) {
             if (!existingIds.has(entry.id)) {
@@ -120,7 +150,25 @@ export default function OpsLogPage() {
 
               if (!isDuplicate) {
                 merged.push(entry);
+                newEventCount++;
               }
+            }
+          }
+
+          // Handle new events indicator and initial scroll
+          if (newEventCount > 0) {
+            if (!hasScrolledToBottomOnce) {
+              // First time loading data - scroll to bottom immediately
+              setTimeout(() => {
+                scrollToBottom();
+                setHasScrolledToBottomOnce(true);
+              }, 50);
+            } else if (!isNearBottom()) {
+              // User is scrolled up - increment new events counter
+              setNewEventsCount(count => count + newEventCount);
+            } else if (autoScroll) {
+              // User is near bottom and auto-scroll is on - scroll to bottom
+              setTimeout(scrollToBottom, 50);
             }
           }
 
@@ -148,13 +196,16 @@ export default function OpsLogPage() {
     };
   }, []);
 
-  const initialScrollDone = useRef(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Set up scroll event listener to clear new events counter when user scrolls near bottom
   useEffect(() => {
-    if (autoScroll && logEndRef.current) {
-      logEndRef.current.scrollIntoView({ behavior: initialScrollDone.current ? "smooth" : "instant" });
-      initialScrollDone.current = true;
-    }
-  }, [entries, autoScroll]);
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [newEventsCount]); // Re-run when newEventsCount changes
 
   const costEntries = entries.filter((e) => /tokens|cost|\$/i.test(e.message));
   const filteredEntries = typeFilter === "$costs"
@@ -235,26 +286,43 @@ export default function OpsLogPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[calc(100vh-320px)] overflow-y-auto rounded-md bg-zinc-950 border border-zinc-800 p-3">
-            {filteredEntries.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
-                No log entries{typeFilter ? ` of type "${typeFilter}"` : ""}
-              </div>
-            ) : (
-              <div className="space-y-0.5">
-                {filteredEntries.map((entry) => (
-                  <div key={entry.id} className="log-line flex gap-3 py-0.5">
-                    <span className="text-zinc-600 shrink-0 w-32">{new Date(entry.timestamp + "Z").toLocaleString()}</span>
-                    <Badge
-                      variant={typeBadgeVariant[entry.type] || "default"}
-                      className="shrink-0 w-24 justify-center text-[11px]"
-                    >
-                      {entry.type}
-                    </Badge>
-                    <span className={typeColors[entry.type] || "text-zinc-400"}>{entry.message}</span>
-                  </div>
-                ))}
-                <div ref={logEndRef} />
+          <div className="relative">
+            <div ref={scrollContainerRef} className="h-[calc(100vh-320px)] overflow-y-auto rounded-md bg-zinc-950 border border-zinc-800 p-3">
+              {filteredEntries.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-zinc-500 text-sm">
+                  No log entries{typeFilter ? ` of type "${typeFilter}"` : ""}
+                </div>
+              ) : (
+                <div className="space-y-0.5">
+                  {filteredEntries.map((entry) => (
+                    <div key={entry.id} className="log-line flex gap-3 py-0.5">
+                      <span className="text-zinc-600 shrink-0 w-32">{new Date(entry.timestamp + "Z").toLocaleString()}</span>
+                      <Badge
+                        variant={typeBadgeVariant[entry.type] || "default"}
+                        className="shrink-0 w-24 justify-center text-[11px]"
+                      >
+                        {entry.type}
+                      </Badge>
+                      <span className={typeColors[entry.type] || "text-zinc-400"}>{entry.message}</span>
+                    </div>
+                  ))}
+                  <div ref={logEndRef} />
+                </div>
+              )}
+            </div>
+            
+            {/* New events indicator */}
+            {newEventsCount > 0 && (
+              <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-10">
+                <Button
+                  onClick={handleNewEventsClick}
+                  variant="outline"
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 border-blue-500 text-white shadow-lg animate-pulse"
+                >
+                  <ArrowDown className="h-3 w-3 mr-1" />
+                  {newEventsCount} new event{newEventsCount > 1 ? 's' : ''}
+                </Button>
               </div>
             )}
           </div>
