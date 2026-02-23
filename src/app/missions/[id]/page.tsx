@@ -327,33 +327,36 @@ export default function MissionDetailPage() {
           </div>
 
           <div className="space-y-6">
-            {/* Status */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-2">Status</label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
-              >
-                {ALL_STATUSES.map(s => (
-                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1).replace('-', ' ')}</option>
-                ))}
-              </select>
-            </div>
+            {/* Status and Repo on same line */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Status */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">Status</label>
+                <select
+                  value={formData.status}
+                  onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
+                >
+                  {ALL_STATUSES.map(s => (
+                    <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1).replace('-', ' ')}</option>
+                  ))}
+                </select>
+              </div>
 
-            {/* Repo */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-2">Repository</label>
-              <select
-                value={formData.repo_id}
-                onChange={(e) => setFormData({ ...formData, repo_id: e.target.value })}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
-              >
-                <option value="">No repository</option>
-                {repos.map(r => (
-                  <option key={r.id} value={r.id}>{r.name} {r.project && `(${r.project})`}</option>
-                ))}
-              </select>
+              {/* Repo */}
+              <div>
+                <label className="block text-sm font-medium text-zinc-400 mb-2">Repository</label>
+                <select
+                  value={formData.repo_id}
+                  onChange={(e) => setFormData({ ...formData, repo_id: e.target.value })}
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
+                >
+                  <option value="">No repository</option>
+                  {repos.map(r => (
+                    <option key={r.id} value={r.id}>{r.name} {r.project && `(${r.project})`}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Description */}
