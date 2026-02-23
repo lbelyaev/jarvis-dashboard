@@ -35,6 +35,14 @@ const statusColors: Record<string, string> = {
   killed: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
 };
 
+const MODELS = [
+  'anthropic/claude-sonnet-4-5-20250929',
+  'anthropic/claude-sonnet-4-20250514',
+  'openai/gpt-5.2-2025-12-11',
+];
+
+const THINKING_LEVELS = ['off', 'low', 'medium', 'high'];
+
 function formatDuration(sec: number | null): string {
   if (!sec) return '—';
   if (sec < 60) return `${sec}s`;
@@ -117,12 +125,121 @@ function AgentRunRow({ run, mission }: { run: AgentRun; mission?: Mission }) {
   );
 }
 
+// Spawn Agent Modal
+function SpawnAgentModal({
+  isOpen,
+  onClose,
+  onSpawn,
+  missions,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSpawn: (data: { task: string; model: string; thinking: string; missionId: string }) => void;
+  missions: Mission[];
+}) {
+  const [task, setTask] = useState('');
+  const [model, setModel] = useState(MODELS[0]);
+  const [thinking, setThinking] = useState('medium');
+  const [missionId, setMissionId] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSpawn({ task, model, thinking, missionId });
+    setTask('');
+    setMissionId('');
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 w-full max-w-lg">
+        <h2 className="text-xl font-bold mb-4">Spawn Sub-Agent</h2>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-zinc-400 mb-1">Task</label>
+            <textarea
+              value={task}
+              onChange={(e) => setTask(e.target.value)}
+              placeholder="Describe the task for the sub-agent..."
+              rows={4}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500 resize-y"
+              required
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Model</label>
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300"
+              >
+                {MODELS.map(m => (
+                  <option key={m} value={m}>{m.split('/').pop()?.split('-')[0]}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Thinking</label>
+              <select
+                value={thinking}
+                onChange={(e) => setThinking(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300"
+              >
+                {THINKING_LEVELS.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-zinc-400 mb-1">Mission (optional)</label>
+            <select
+              value={missionId}
+              onChange={(e) => setMissionId(e.target.value)}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300"
+            >
+              <option value="">No mission</option>
+              {missions.map(m => (
+                <option key={m.id} value={m.id}>#{m.id}: {m.title}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-zinc-400 hover:text-zinc-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg"
+            >
+              Spawn Agent
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function AgentsPage() {
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [missions, setMissions] = useState<Record<number, Mission>>({});
+  const [missionsList, setMissionsList] = useState<Mission[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('');
   const [filterModel, setFilterModel] = useState('');
+  const [showSpawnModal, setShowSpawnModal] = useState(false);
 
   const fetchRuns = useCallback(async () => {
     setLoading(true);
@@ -143,9 +260,38 @@ export default function AgentsPage() {
     }
   }, [filterStatus, filterModel]);
 
+  const fetchMissions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/missions');
+      if (!res.ok) throw new Error('Failed to fetch missions');
+      const data = await res.json();
+      setMissionsList(data.missions || []);
+    } catch (err) {
+      console.error('Error fetching missions:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchRuns();
-  }, [fetchRuns]);
+    fetchMissions();
+  }, [fetchRuns, fetchMissions]);
+
+  const handleSpawn = async (data: { task: string; model: string; thinking: string; missionId: string }) => {
+    try {
+      const res = await fetch('/api/spawn', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to spawn agent');
+      setShowSpawnModal(false);
+      // Refresh runs list
+      fetchRuns();
+    } catch (err) {
+      console.error('Error spawning agent:', err);
+      alert('Failed to spawn agent: ' + String(err));
+    }
+  };
 
   // Get unique models for filter
   const models = [...new Set(runs.map(r => r.model).filter(Boolean))];
@@ -159,7 +305,21 @@ export default function AgentsPage() {
           <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Sub-Agents</h1>
           <p className="text-zinc-500 text-sm mt-1">{runs.length} run{runs.length !== 1 ? 's' : ''}</p>
         </div>
+        <button
+          onClick={() => setShowSpawnModal(true)}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-medium"
+        >
+          + Spawn Agent
+        </button>
       </div>
+
+      {/* Spawn Modal */}
+      <SpawnAgentModal
+        isOpen={showSpawnModal}
+        onClose={() => setShowSpawnModal(false)}
+        onSpawn={handleSpawn}
+        missions={missionsList}
+      />
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
