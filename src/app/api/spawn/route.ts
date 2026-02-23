@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 const execFileAsync = promisify(execFile);
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { task, model, thinking, missionId } = body;
+    const { task, model, thinking, missionId, label: customLabel } = body;
 
     if (!task) {
       return NextResponse.json(
@@ -16,41 +19,63 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate a unique label for the agent run
-    const label = `spawn-${Date.now()}`;
+    // Get mission details if missionId provided
+    let missionContext = "";
+    if (missionId) {
+      try {
+        const opsDbPath = process.env.OPS_DB_PATH || '/Users/lbelyaev/.openclaw/workspace/ops.db';
+        const { stdout } = await execFileAsync('sqlite3', [
+          opsDbPath,
+          "-cmd",
+          ".mode json",
+          `SELECT title, description, expected_outcome FROM missions WHERE id = ${missionId};`
+        ], { timeout: 5000 });
+        
+        if (stdout) {
+          const missionData = JSON.parse(stdout.trim());
+          missionContext = `\n\nMISSION CONTEXT (#${missionId}: ${missionData.title}):\n${missionData.description || ''}\nExpected Outcome: ${missionData.expected_outcome || ''}`;
+        }
+      } catch (e) {
+        console.error('Failed to fetch mission context:', e);
+      }
+    }
+
+    // Generate label
+    const label = customLabel || `spawn-${Date.now()}`;
     
-    // Build the spawn command - this will vary based on how OpenClaw is configured
-    // For now, we create a placeholder that logs the request
-    // In production, this should call OpenClaw's sessions_spawn
-    const spawnData = {
-      id: Date.now(),
-      label,
-      task,
-      model: model || 'anthropic/claude-sonnet-4',
-      thinking_level: thinking || 'medium',
-      mission_id: missionId || null,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
-
+    // Build the task with mission context
+    const fullTask = `${task}${missionContext}`;
+    
+    // Write task to a temp file for the agent to read
+    const tempDir = os.tmpdir();
+    const taskFile = path.join(tempDir, `agent-task-${label}.md`);
+    await fs.promises.writeFile(taskFile, fullTask, 'utf-8');
+    
     // Log the spawn attempt
-    console.log('Spawning agent:', spawnData);
-
-    // TODO: Integrate with OpenClaw's sessions_spawn
-    // This would typically call something like:
-    // await sessionsSpawn({
-    //   task,
-    //   model,
-    //   thinking,
-    //   missionId,
-    //   label,
-    // });
-
-    // For now, return the spawn data so the UI can show it was initiated
+    console.log('Spawning agent:', { label, task: fullTask.substring(0, 200), missionId });
+    
+    // Insert agent run record into database with mission_id
+    const opsDbPath = process.env.OPS_DB_PATH || '/Users/lbelyaev/.openclaw/workspace/ops.db';
+    const insertSql = `
+      INSERT INTO agent_runs (label, mission_id, model, thinking_level, status, started_at)
+      VALUES ('${label}', ${missionId || 'NULL'}, '${model || 'unknown'}', '${thinking || 'medium'}', 'pending', datetime('now'));
+    `;
+    
+    await execFileAsync('sqlite3', [opsDbPath, insertSql], { timeout: 3000 });
+    
+    // Return success - actual agent spawning requires OpenClaw integration
     return NextResponse.json({ 
       success: true, 
-      message: "Agent spawn initiated. Note: Full integration with OpenClaw spawning system required.",
-      run: spawnData 
+      message: "Agent spawn record created. Use 'openclaw agent spawn' or dashboard to complete.",
+      run: {
+        label,
+        task: fullTask.substring(0, 500),
+        model: model || 'default',
+        thinking_level: thinking || 'medium',
+        mission_id: missionId || null,
+        status: 'pending',
+        task_file: taskFile,
+      }
     });
 
   } catch (error) {
