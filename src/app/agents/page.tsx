@@ -1,204 +1,222 @@
-"use client";
+'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { useFetch } from "@/hooks/use-fetch";
-import { Bot, Clock, Cpu, Eye, StopCircle, MessageSquare } from "lucide-react";
-import { formatDuration, timeAgo } from "@/lib/utils";
+import { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 
-interface SessionsData {
-  active: Array<{
-    key: string;
-    label?: string;
-    model?: string;
-    status: string;
-    startedAt: string;
-    tokens?: { input: number; output: number; total: number };
-  }>;
-  recent: Array<{
-    key: string;
-    label?: string;
-    model?: string;
-    status: string;
-    startedAt: string;
-    completedAt?: string;
-    cost?: number;
-    duration?: number;
-    result?: string;
-    tokens?: { input: number; output: number; total: number };
-  }>;
+interface AgentRun {
+  id: number;
+  label: string;
+  mission_id: number | null;
+  model: string;
+  thinking_level: string | null;
+  status: string;
+  tokens_input: number | null;
+  tokens_output: number | null;
+  cost_usd: number | null;
+  duration_sec: number | null;
+  started_at: string;
+  completed_at: string | null;
+  result_summary: string | null;
+  error: string | null;
+}
+
+interface Mission {
+  id: number;
+  title: string;
+  project: string | null;
+}
+
+const statusColors: Record<string, string> = {
+  completed: 'bg-green-500/20 text-green-400 border-green-500/30',
+  done: 'bg-green-500/20 text-green-400 border-green-500/30',
+  failed: 'bg-red-500/20 text-red-400 border-red-500/30',
+  running: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  pending: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
+  killed: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+};
+
+function formatDuration(sec: number | null): string {
+  if (!sec) return '—';
+  if (sec < 60) return `${sec}s`;
+  if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
+  return `${Math.floor(sec / 3600)}h ${Math.floor((sec % 3600) / 60)}m`;
+}
+
+function formatCost(cost: number | null): string {
+  if (cost == null) return '—';
+  return `$${cost.toFixed(4)}`;
+}
+
+function AgentRunRow({ run, mission }: { run: AgentRun; mission?: Mission }) {
+  const statusColor = statusColors[run.status] || statusColors.pending;
+  const missionProject = mission?.project || 'personal';
+  const projectColors: Record<string, string> = {
+    boost: 'text-orange-400',
+    x1: 'text-blue-400',
+    ape: 'text-green-400',
+    personal: 'text-purple-400',
+  };
+
+  return (
+    <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors">
+      <div className="flex items-start gap-4">
+        <div className="flex-1 min-w-0">
+          {/* Header */}
+          <div className="flex items-center gap-3 mb-2 flex-wrap">
+            <span className="font-medium text-zinc-200 truncate">{run.label}</span>
+            <span className={`px-2 py-0.5 text-xs rounded border ${statusColor}`}>
+              {run.status}
+            </span>
+            <span className="text-zinc-500 text-sm">{run.model}</span>
+            {run.thinking_level && (
+              <span className="text-zinc-600 text-sm">· {run.thinking_level}</span>
+            )}
+          </div>
+
+          {/* Mission Link */}
+          {mission && (
+            <div className="mb-2">
+              <Link
+                href={`/missions/${mission.id}`}
+                className={`text-sm hover:underline ${projectColors[missionProject] || 'text-zinc-400'}`}
+              >
+                Mission #{mission.id}: {mission.title}
+              </Link>
+            </div>
+          )}
+
+          {/* Stats */}
+          <div className="flex items-center gap-4 text-sm text-zinc-500">
+            <span>⏱ {formatDuration(run.duration_sec)}</span>
+            <span className="text-amber-400">{formatCost(run.cost_usd)}</span>
+            {run.tokens_input && (
+              <span>{run.tokens_input.toLocaleString()} → {run.tokens_output?.toLocaleString()} tokens</span>
+            )}
+            <span>
+              {new Date(run.started_at).toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </span>
+          </div>
+
+          {/* Result or Error */}
+          {run.error && (
+            <div className="mt-2 bg-red-900/20 border border-red-800/50 rounded p-2">
+              <pre className="text-red-400 text-xs whitespace-pre-wrap">{run.error.substring(0, 200)}</pre>
+            </div>
+          )}
+          {run.result_summary && !run.error && (
+            <p className="mt-2 text-zinc-400 text-sm line-clamp-2">{run.result_summary}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function AgentsPage() {
-  const { data: sessions, loading } = useFetch<SessionsData>("/api/sessions", 5000);
+  const [runs, setRuns] = useState<AgentRun[]>([]);
+  const [missions, setMissions] = useState<Record<number, Mission>>({});
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState({
+    status: '',
+    model: '',
+    missionId: '',
+  });
 
-  const activeAgents = sessions?.active || [];
-  const recentAgents = sessions?.recent || [];
+  const fetchRuns = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (filter.status) params.append('status', filter.status);
+      if (filter.model) params.append('model', filter.model);
+      if (filter.missionId) params.append('mission_id', filter.missionId);
+
+      const res = await fetch(`/api/agent-runs?${params.toString()}`);
+      if (!res.ok) throw new Error('Failed to fetch runs');
+      const data = await res.json();
+      setRuns(data.runs || []);
+      setMissions(data.missions || {});
+    } catch (err) {
+      console.error('Error fetching runs:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [filter]);
+
+  useEffect(() => {
+    fetchRuns();
+  }, [fetchRuns]);
+
+  // Get unique models for filter
+  const models = [...new Set(runs.map(r => r.model).filter(Boolean))];
+  const statuses = [...new Set(runs.map(r => r.status).filter(Boolean))];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-zinc-100">Sub-Agents</h1>
-        <p className="text-sm text-zinc-500">Monitor active and recent agent sessions</p>
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-100">Sub-Agents</h1>
+          <p className="text-zinc-500 text-sm mt-1">{runs.length} run{runs.length !== 1 ? 's' : ''}</p>
+        </div>
       </div>
 
-      {/* Active Agents */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bot className="h-4 w-4 text-blue-400" />
-            Active Agents
-            {activeAgents.length > 0 && (
-              <Badge variant="info">{activeAgents.length}</Badge>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8 text-zinc-500">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-400" />
-              <span className="ml-2 text-sm">Loading...</span>
-            </div>
-          ) : activeAgents.length === 0 ? (
-            <div className="py-8 text-center text-sm text-zinc-500">
-              No active agents. All quiet on the western front.
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {activeAgents.map((agent) => {
-                const runtime = Math.floor(
-                  (Date.now() - new Date(agent.startedAt).getTime()) / 1000
-                );
-                return (
-                  <div
-                    key={agent.key}
-                    className="rounded-lg border border-zinc-800 bg-zinc-900 p-4"
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-2 rounded-full bg-blue-400 pulse-dot" />
-                          <span className="font-medium">
-                            {agent.label || "unnamed"}
-                          </span>
-                          <Badge variant="info">running</Badge>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-zinc-400">
-                          <span className="flex items-center gap-1">
-                            <Cpu className="h-3 w-3" />
-                            {agent.model}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            {formatDuration(runtime)}
-                          </span>
-                          {agent.tokens && (
-                            <span className="font-mono">
-                              {(agent.tokens.total / 1000).toFixed(1)}k tokens
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button variant="ghost" size="sm" disabled title="Steer agent (coming soon)">
-                          <MessageSquare className="h-3 w-3 mr-1" />
-                          Steer
-                        </Button>
-                        <Button variant="ghost" size="sm" disabled title="Kill agent (coming soon)">
-                          <StopCircle className="h-3 w-3 mr-1" />
-                          Kill
-                        </Button>
-                        <Button variant="ghost" size="sm" disabled title="View logs (coming soon)">
-                          <Eye className="h-3 w-3 mr-1" />
-                          Logs
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs font-mono text-zinc-600 truncate">
-                      {agent.key}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        <select
+          value={filter.status}
+          onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300"
+        >
+          <option value="">All statuses</option>
+          {statuses.map(s => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
 
-      {/* Recent Completions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Completions</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recentAgents.length === 0 ? (
-            <p className="text-sm text-zinc-500 py-4 text-center">
-              No recent completions
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-800 text-left text-xs text-zinc-500">
-                    <th className="pb-2 pr-4">Agent</th>
-                    <th className="pb-2 pr-4">Model</th>
-                    <th className="pb-2 pr-4">Status</th>
-                    <th className="pb-2 pr-4">Duration</th>
-                    <th className="pb-2 pr-4">Tokens</th>
-                    <th className="pb-2 pr-4">Cost</th>
-                    <th className="pb-2">Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentAgents.map((agent) => (
-                    <tr
-                      key={agent.key}
-                      className="border-b border-zinc-800/50 hover:bg-zinc-900/50"
-                    >
-                      <td className="py-3 pr-4 font-medium">
-                        {agent.label || "unnamed"}
-                      </td>
-                      <td className="py-3 pr-4 font-mono text-xs text-zinc-400">
-                        {agent.model?.split("/").pop()}
-                      </td>
-                      <td className="py-3 pr-4">
-                        <Badge
-                          variant={
-                            agent.status === "completed"
-                              ? "success"
-                              : agent.status === "failed"
-                              ? "danger"
-                              : "warning"
-                          }
-                        >
-                          {agent.status}
-                        </Badge>
-                      </td>
-                      <td className="py-3 pr-4 text-zinc-400">
-                        {agent.duration ? formatDuration(agent.duration) : "—"}
-                      </td>
-                      <td className="py-3 pr-4 font-mono text-xs text-zinc-400">
-                        {agent.tokens
-                          ? `${(agent.tokens.total / 1000).toFixed(1)}k`
-                          : "—"}
-                      </td>
-                      <td className="py-3 pr-4 text-amber-400">
-                        {agent.cost
-                          ? `$${(agent.cost / 100).toFixed(2)}`
-                          : "—"}
-                      </td>
-                      <td className="py-3 text-xs text-zinc-500 max-w-xs truncate">
-                        {agent.result || "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        <select
+          value={filter.model}
+          onChange={(e) => setFilter({ ...filter, model: e.target.value })}
+          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300"
+        >
+          <option value="">All models</option>
+          {models.map(m => (
+            <option key={m} value={m}>{m}</option>
+          ))}
+        </select>
+
+        <button
+          onClick={() => setFilter({ status: '', model: '', missionId: '' })}
+          className="text-sm text-zinc-400 hover:text-zinc-200"
+        >
+          Clear filters
+        </button>
+      </div>
+
+      {/* Runs List */}
+      <div className="space-y-3">
+        {loading ? (
+          <div className="flex items-center justify-center h-32">
+            <div className="w-5 h-5 border-2 border-zinc-800 border-t-zinc-400 rounded-full animate-spin" />
+          </div>
+        ) : runs.length === 0 ? (
+          <div className="text-center py-12 text-zinc-500">
+            <p>No agent runs found</p>
+          </div>
+        ) : (
+          runs.map((run) => (
+            <AgentRunRow
+              key={run.id}
+              run={run}
+              mission={run.mission_id ? missions[run.mission_id] : undefined}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }
