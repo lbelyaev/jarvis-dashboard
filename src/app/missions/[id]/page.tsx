@@ -26,6 +26,14 @@ const runStatusColors: Record<string, string> = {
   done: 'border-green-500 text-green-400 bg-green-500/10',
 };
 
+const stepStatusColors: Record<string, string> = {
+  pending: 'bg-zinc-800 text-zinc-500',
+  'in-progress': 'bg-yellow-500/20 text-yellow-400',
+  done: 'bg-green-500/20 text-green-400',
+  failed: 'bg-red-500/20 text-red-400',
+  skipped: 'bg-zinc-700 text-zinc-400',
+};
+
 interface Repo {
   id: number;
   name: string;
@@ -46,6 +54,17 @@ interface Mission {
   outcome: string | null;
   created_at: string;
   updated_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+interface MissionStep {
+  id: number;
+  step_number: number;
+  title: string;
+  description: string | null;
+  status: string;
+  outcome: string | null;
   started_at: string | null;
   completed_at: string | null;
 }
@@ -100,15 +119,49 @@ function AgentRunCard({ run, index }: { run: AgentRun; index: number }) {
           </div>
 
           {run.error && (
-            <div className="bg-red-900/20 border border-red-800/50 rounded p-2 mt-2">
+            <div className="mt-2 bg-red-900/20 border border-red-800/50 rounded p-2">
               <pre className="text-red-400 text-xs whitespace-pre-wrap">{run.error}</pre>
             </div>
           )}
-
           {run.result_summary && !run.error && (
-            <div className="mt-2">
-              <p className="text-zinc-400 text-sm line-clamp-3">{run.result_summary}</p>
-            </div>
+            <p className="mt-2 text-zinc-400 text-sm line-clamp-2">{run.result_summary}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Mission Step Card
+function MissionStepCard({ step, isLast }: { step: MissionStep; isLast: boolean }) {
+  const statusColor = stepStatusColors[step.status] || stepStatusColors.pending;
+
+  return (
+    <div className="flex gap-4">
+      {/* Timeline line */}
+      <div className="flex flex-col items-center">
+        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${statusColor}`}>
+          {step.step_number}
+        </div>
+        {!isLast && (
+          <div className="w-0.5 flex-1 bg-zinc-800 my-2" />
+        )}
+      </div>
+
+      {/* Step content */}
+      <div className="flex-1 pb-6">
+        <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <span className="font-medium text-zinc-200">{step.title}</span>
+            <span className={`px-2 py-0.5 text-xs rounded ${statusColor}`}>
+              {step.status}
+            </span>
+          </div>
+          {step.description && (
+            <p className="text-zinc-400 text-sm">{step.description}</p>
+          )}
+          {step.outcome && (
+            <p className="text-zinc-500 text-sm mt-2 italic">{step.outcome}</p>
           )}
         </div>
       </div>
@@ -122,20 +175,12 @@ export default function MissionDetailPage() {
   
   const [mission, setMission] = useState<Mission | null>(null);
   const [runs, setRuns] = useState<AgentRun[]>([]);
-  const [repos, setRepos] = useState<Repo[]>([]);
+  const [steps, setSteps] = useState<MissionStep[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-
-  // Form state for editable fields
-  const [formData, setFormData] = useState<{
-    description: string;
-    expected_outcome: string;
-    definition_of_done: string;
-    status: string;
-    repo_id: string;
-  }>({
+  const [formData, setFormData] = useState({
     description: '',
     expected_outcome: '',
     definition_of_done: '',
@@ -143,7 +188,6 @@ export default function MissionDetailPage() {
     repo_id: '',
   });
 
-  // Track if form is dirty
   const isDirty = mission && (
     formData.description !== (mission.description || '') ||
     formData.expected_outcome !== (mission.expected_outcome || '') ||
@@ -160,7 +204,7 @@ export default function MissionDetailPage() {
       const data = await res.json();
       setMission(data.mission);
       setRuns(data.runs || []);
-      // Initialize form data
+      setSteps(data.steps || []);
       setFormData({
         description: data.mission.description || '',
         expected_outcome: data.mission.expected_outcome || '',
@@ -175,22 +219,9 @@ export default function MissionDetailPage() {
     }
   }, [missionId]);
 
-  const fetchRepos = useCallback(async () => {
-    try {
-      const res = await fetch('/api/repos');
-      if (res.ok) {
-        const data = await res.json();
-        setRepos(data.repos || []);
-      }
-    } catch (err) {
-      console.error('Failed to fetch repos:', err);
-    }
-  }, []);
-    
   useEffect(() => {
     fetchMission();
-    fetchRepos();
-  }, [fetchMission, fetchRepos]);
+  }, [fetchMission]);
 
   const handleSave = async () => {
     if (!mission || saving || !isDirty) return;
@@ -222,17 +253,6 @@ export default function MissionDetailPage() {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleReset = () => {
-    if (!mission) return;
-    setFormData({
-      description: mission.description || '',
-      expected_outcome: mission.expected_outcome || '',
-      definition_of_done: mission.definition_of_done || '',
-      status: mission.status,
-      repo_id: String(mission.repo_id || ''),
-    });
   };
 
   if (loading) {
@@ -295,6 +315,25 @@ export default function MissionDetailPage() {
           <h1 className="text-3xl font-bold">{mission.title}</h1>
         </div>
 
+        {/* Plan Section */}
+        {steps.length > 0 && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">Plan</h2>
+              <span className="text-sm text-zinc-500">{steps.length} step{steps.length !== 1 ? 's' : ''}</span>
+            </div>
+            <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-6">
+              {steps.map((step, index) => (
+                <MissionStepCard 
+                  key={step.id} 
+                  step={step} 
+                  isLast={index === steps.length - 1}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Editable Fields Form */}
         <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-6 mb-8">
           <div className="flex items-center justify-between mb-6">
@@ -306,7 +345,13 @@ export default function MissionDetailPage() {
                 </span>
               )}
               <button
-                onClick={handleReset}
+                onClick={() => setFormData({
+                  description: mission.description || '',
+                  expected_outcome: mission.expected_outcome || '',
+                  definition_of_done: mission.definition_of_done || '',
+                  status: mission.status,
+                  repo_id: String(mission.repo_id || ''),
+                })}
                 disabled={saving || !isDirty}
                 className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
               >
@@ -327,15 +372,13 @@ export default function MissionDetailPage() {
           </div>
 
           <div className="space-y-6">
-            {/* Status and Repo on same line */}
             <div className="grid grid-cols-2 gap-4">
-              {/* Status */}
               <div>
                 <label className="block text-sm font-medium text-zinc-400 mb-2">Status</label>
                 <select
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300"
                 >
                   {ALL_STATUSES.map(s => (
                     <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1).replace('-', ' ')}</option>
@@ -343,64 +386,49 @@ export default function MissionDetailPage() {
                 </select>
               </div>
 
-              {/* Repo */}
               <div>
                 <label className="block text-sm font-medium text-zinc-400 mb-2">Repository</label>
                 <select
                   value={formData.repo_id}
                   onChange={(e) => setFormData({ ...formData, repo_id: e.target.value })}
-                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
+                  className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300"
                 >
                   <option value="">No repository</option>
-                  {repos.map(r => (
-                    <option key={r.id} value={r.id}>{r.name} {r.project && `(${r.project})`}</option>
-                  ))}
                 </select>
               </div>
             </div>
 
-            {/* Description */}
             <div>
               <label className="block text-sm font-medium text-zinc-400 mb-2">Description</label>
               <textarea
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={4}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500 resize-y"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 resize-y"
               />
             </div>
 
-            {/* Expected Outcome */}
             <div>
               <label className="block text-sm font-medium text-zinc-400 mb-2">Expected Outcome</label>
               <textarea
                 value={formData.expected_outcome}
                 onChange={(e) => setFormData({ ...formData, expected_outcome: e.target.value })}
                 rows={3}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500 resize-y"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 resize-y"
               />
             </div>
 
-            {/* Definition of Done */}
             <div>
               <label className="block text-sm font-medium text-zinc-400 mb-2">Definition of Done</label>
               <textarea
                 value={formData.definition_of_done}
                 onChange={(e) => setFormData({ ...formData, definition_of_done: e.target.value })}
                 rows={4}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500 resize-y"
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 resize-y"
               />
             </div>
           </div>
         </div>
-
-        {/* Outcome (read only) */}
-        {mission.outcome && (
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 mb-8">
-            <h3 className="text-sm font-medium text-zinc-400 mb-2">Outcome</h3>
-            <p className="text-zinc-300 whitespace-pre-wrap">{mission.outcome}</p>
-          </div>
-        )}
 
         {/* Dates */}
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 mb-8">
@@ -425,7 +453,7 @@ export default function MissionDetailPage() {
           </div>
         </div>
 
-        {/* Agent Runs / Commits */}
+        {/* Commits */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Commits</h2>
