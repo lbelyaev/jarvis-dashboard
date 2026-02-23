@@ -197,14 +197,14 @@ export async function updateMission(
   id: number,
   updates: Partial<Omit<Mission, 'id' | 'created_at' | 'updated_at'>>
 ): Promise<Mission | null> {
-  // Build SET clause dynamically
+  // Build SET clause dynamically with named parameters
   const setClauses: string[] = [];
-  const paramValues: (string | number)[] = [];
+  const params: (string | number)[] = [];
   
   for (const [key, value] of Object.entries(updates)) {
     if (value !== undefined && value !== null) {
-      setClauses.push(`${key} = ?`);
-      paramValues.push(value as string | number);
+      setClauses.push(`${key} = ?${params.length + 1}`);
+      params.push(value as string | number);
     } else if (value === null) {
       setClauses.push(`${key} = NULL`);
     }
@@ -217,21 +217,30 @@ export async function updateMission(
   // Add updated_at
   setClauses.push("updated_at = datetime('now')");
   
+  // Add id as last param
+  params.push(id);
+  
   const sql = `
     UPDATE missions 
     SET ${setClauses.join(', ')}
-    WHERE id = ${id}
+    WHERE id = ?${params.length}
   `;
   
-  // Build sqlite3 command
-  let command = `.mode json\n`;
-  paramValues.forEach((value, idx) => {
-    command += `.parameter set ?${idx + 1} ${JSON.stringify(String(value))}\n`;
+  // Execute using queryDb pattern but without -readonly
+  const args = [
+    config.opsDbPath,
+    "-cmd", ".mode json",
+    "-cmd", ".parameter clear",
+  ];
+  
+  params.forEach((value, idx) => {
+    args.push("-cmd", `.parameter set ?${idx + 1} ${JSON.stringify(String(value))}`);
   });
-  command += sql;
+  
+  args.push(sql);
   
   try {
-    await execFileAsync("sqlite3", [config.opsDbPath, command], { timeout: 3000 });
+    await execFileAsync("sqlite3", args, { timeout: 3000 });
   } catch (e) {
     console.error("Update failed:", e);
     throw e;
