@@ -121,19 +121,15 @@ export default function AgentsPage() {
   const [runs, setRuns] = useState<AgentRun[]>([]);
   const [missions, setMissions] = useState<Record<number, Mission>>({});
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({
-    status: '',
-    model: '',
-    missionId: '',
-  });
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterModel, setFilterModel] = useState('');
 
   const fetchRuns = useCallback(async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filter.status) params.append('status', filter.status);
-      if (filter.model) params.append('model', filter.model);
-      if (filter.missionId) params.append('mission_id', filter.missionId);
+      if (filterStatus) params.append('status', filterStatus);
+      if (filterModel) params.append('model', filterModel);
 
       const res = await fetch(`/api/agent-runs?${params.toString()}`);
       if (!res.ok) throw new Error('Failed to fetch runs');
@@ -145,7 +141,7 @@ export default function AgentsPage() {
     } finally {
       setLoading(false);
     }
-  }, [filter]);
+  }, [filterStatus, filterModel]);
 
   useEffect(() => {
     fetchRuns();
@@ -168,8 +164,8 @@ export default function AgentsPage() {
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-3">
         <select
-          value={filter.status}
-          onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
           className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300"
         >
           <option value="">All statuses</option>
@@ -179,8 +175,8 @@ export default function AgentsPage() {
         </select>
 
         <select
-          value={filter.model}
-          onChange={(e) => setFilter({ ...filter, model: e.target.value })}
+          value={filterModel}
+          onChange={(e) => setFilterModel(e.target.value)}
           className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-300"
         >
           <option value="">All models</option>
@@ -190,7 +186,7 @@ export default function AgentsPage() {
         </select>
 
         <button
-          onClick={() => setFilter({ status: '', model: '', missionId: '' })}
+          onClick={() => { setFilterStatus(''); setFilterModel(''); }}
           className="text-sm text-zinc-400 hover:text-zinc-200"
         >
           Clear filters
