@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     const opsDbPath = process.env.OPS_DB_PATH || '/Users/lbelyaev/.openclaw/workspace/ops.db';
     const insertSql = `
       INSERT INTO agent_runs (label, mission_id, model, thinking_level, status, started_at)
-      VALUES ('${label}', ${missionId || 'NULL'}, '${model || 'unknown'}', '${thinking || 'medium'}', 'pending', datetime('now'));
+      VALUES ('${label}', ${missionId || 'NULL'}, '${model || 'unknown'}', '${thinking || 'medium'}', 'running', datetime('now'));
     `;
     
     await execFileAsync('sqlite3', [opsDbPath, insertSql], { timeout: 3000 });
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
         model: model || 'default',
         thinking_level: thinking || 'medium',
         mission_id: missionId || null,
-        status: 'pending',
+        status: 'running',
         task_file: taskFile,
       }
     });
