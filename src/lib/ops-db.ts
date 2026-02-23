@@ -290,16 +290,38 @@ export async function getAgentRuns(limitParam: string | null): Promise<AgentRun[
 }
 
 export async function getAgentRunsForMission(missionId: number): Promise<AgentRun[]> {
-  const sql = `
+  // First try by mission_id
+  const sqlByMissionId = `
     SELECT
       id, label, mission_id, step_id, model, thinking_level, status,
       tokens_input, tokens_output, tokens_cache, cost_usd, duration_sec,
       started_at, completed_at, result_summary, error, session_key, created_at
     FROM agent_runs
     WHERE mission_id = ?1
-    ORDER BY datetime(started_at) ASC
+    ORDER BY datetime(started_at) DESC
   `;
-  return queryDb<AgentRun>(sql, [missionId]);
+  const runs = await queryDb<AgentRun>(sqlByMissionId, [missionId]);
+  
+  // If no runs found, try to find by mission title in label
+  if (runs.length === 0) {
+    const mission = await getMissionById(missionId);
+    if (mission) {
+      const sqlByLabel = `
+        SELECT
+          id, label, mission_id, step_id, model, thinking_level, status,
+          tokens_input, tokens_output, tokens_cache, cost_usd, duration_sec,
+          started_at, completed_at, result_summary, error, session_key, created_at
+        FROM agent_runs
+        WHERE label LIKE ?1 OR result_summary LIKE ?1
+        ORDER BY datetime(started_at) DESC
+        LIMIT 50
+      `;
+      const searchTerm = `%${mission.title}%`;
+      return queryDb<AgentRun>(sqlByLabel, [searchTerm]);
+    }
+  }
+  
+  return runs;
 }
 
 export async function getTodaySummary() {

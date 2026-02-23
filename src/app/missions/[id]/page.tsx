@@ -23,13 +23,7 @@ const runStatusColors: Record<string, string> = {
   failed: 'border-red-500 text-red-400 bg-red-500/10',
   running: 'border-yellow-500 text-yellow-400 bg-yellow-500/10',
   pending: 'border-gray-500 text-gray-400 bg-gray-500/10',
-};
-
-const typeColors: Record<string, string> = {
-  bug: 'bg-red-500/20 text-red-400',
-  feature: 'bg-blue-500/20 text-blue-400',
-  chore: 'bg-gray-500/20 text-gray-400',
-  hotfix: 'bg-orange-500/20 text-orange-400',
+  done: 'border-green-500 text-green-400 bg-green-500/10',
 };
 
 interface Repo {
@@ -56,104 +50,7 @@ interface Mission {
   completed_at: string | null;
 }
 
-// Editable text field component
-function EditableField({
-  label,
-  value,
-  onSave,
-  multiline = false,
-}: {
-  label: string;
-  value: string | null;
-  onSave: (value: string) => void;
-  multiline?: boolean;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(value || '');
-  const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    setEditValue(value || '');
-  }, [value]);
-
-  const handleSave = async () => {
-    setIsSaving(true);
-    await onSave(editValue);
-    setIsSaving(false);
-    setIsEditing(false);
-  };
-
-  const handleCancel = () => {
-    setEditValue(value || '');
-    setIsEditing(false);
-  };
-
-  if (!isEditing) {
-    return (
-      <div
-        onClick={() => setIsEditing(true)}
-        className="group cursor-pointer"
-      >
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-medium text-zinc-400">{label}</h3>
-          <span className="text-xs text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity">
-            Click to edit
-          </span>
-        </div>
-        <div className="text-zinc-300 whitespace-pre-wrap">
-          {value || <span className="text-zinc-600 italic">No {label.toLowerCase()} set</span>}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-medium text-zinc-400">{label}</h3>
-        <div className="flex items-center gap-2">
-          {isSaving && <span className="text-xs text-zinc-500">Saving...</span>}
-        </div>
-      </div>
-      
-      {multiline ? (
-        <textarea
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500 min-h-[100px] resize-y"
-          autoFocus
-        />
-      ) : (
-        <input
-          type="text"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
-          autoFocus
-        />
-      )}
-      
-      <div className="flex items-center gap-2 mt-2">
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="px-3 py-1 bg-zinc-700 hover:bg-zinc-600 text-white text-sm rounded transition-colors disabled:opacity-50"
-        >
-          Save
-        </button>
-        <button
-          onClick={handleCancel}
-          disabled={isSaving}
-          className="px-3 py-1 text-zinc-500 hover:text-zinc-300 text-sm transition-colors disabled:opacity-50"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// Agent Run Card (Commit)
+// Agent Run Card
 function AgentRunCard({ run, index }: { run: AgentRun; index: number }) {
   const formatDuration = (sec: number | null) => {
     if (!sec) return 'N/A';
@@ -175,21 +72,17 @@ function AgentRunCard({ run, index }: { run: AgentRun; index: number }) {
   return (
     <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors">
       <div className="flex items-start gap-4">
-        {/* Index */}
         <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 text-sm font-medium text-zinc-400">
           {index + 1}
         </div>
-        
         <div className="flex-1 min-w-0">
-          {/* Header */}
           <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="font-medium text-zinc-200">{run.label}</span>
+            <span className="font-medium text-zinc-200">{run.label || 'Untitled run'}</span>
             <span className={`px-2 py-0.5 text-xs rounded border ${statusColor}`}>
               {run.status}
             </span>
           </div>
 
-          {/* Model & Thinking */}
           <div className="flex items-center gap-2 mb-2 text-sm">
             <span className="text-zinc-500">{run.model}</span>
             {run.thinking_level && (
@@ -197,7 +90,6 @@ function AgentRunCard({ run, index }: { run: AgentRun; index: number }) {
             )}
           </div>
 
-          {/* Stats */}
           <div className="flex items-center gap-4 mb-2 text-sm text-zinc-500">
             <span>⏱ {formatDuration(run.duration_sec)}</span>
             {run.cost_usd != null && <span className="text-amber-400">${run.cost_usd.toFixed(4)}</span>}
@@ -207,14 +99,12 @@ function AgentRunCard({ run, index }: { run: AgentRun; index: number }) {
             <span>{formatDate(run.started_at)}</span>
           </div>
 
-          {/* Error */}
           {run.error && (
             <div className="bg-red-900/20 border border-red-800/50 rounded p-2 mt-2">
               <pre className="text-red-400 text-xs whitespace-pre-wrap">{run.error}</pre>
             </div>
           )}
 
-          {/* Result Summary */}
           {run.result_summary && !run.error && (
             <div className="mt-2">
               <p className="text-zinc-400 text-sm line-clamp-3">{run.result_summary}</p>
@@ -236,7 +126,31 @@ export default function MissionDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saveFeedback, setSaveFeedback] = useState<string | null>(null);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  // Form state for editable fields
+  const [formData, setFormData] = useState<{
+    description: string;
+    expected_outcome: string;
+    definition_of_done: string;
+    status: string;
+    repo_id: string;
+  }>({
+    description: '',
+    expected_outcome: '',
+    definition_of_done: '',
+    status: '',
+    repo_id: '',
+  });
+
+  // Track if form is dirty
+  const isDirty = mission && (
+    formData.description !== (mission.description || '') ||
+    formData.expected_outcome !== (mission.expected_outcome || '') ||
+    formData.definition_of_done !== (mission.definition_of_done || '') ||
+    formData.status !== mission.status ||
+    formData.repo_id !== String(mission.repo_id || '')
+  );
 
   const fetchMission = useCallback(async () => {
     if (!missionId) return;
@@ -246,6 +160,14 @@ export default function MissionDetailPage() {
       const data = await res.json();
       setMission(data.mission);
       setRuns(data.runs || []);
+      // Initialize form data
+      setFormData({
+        description: data.mission.description || '',
+        expected_outcome: data.mission.expected_outcome || '',
+        definition_of_done: data.mission.definition_of_done || '',
+        status: data.mission.status,
+        repo_id: String(data.mission.repo_id || ''),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -270,11 +192,19 @@ export default function MissionDetailPage() {
     fetchRepos();
   }, [fetchMission, fetchRepos]);
 
-  const updateMission = async (updates: Partial<Mission>) => {
-    if (!mission || saving) return;
+  const handleSave = async () => {
+    if (!mission || saving || !isDirty) return;
     setSaving(true);
-    setSaveFeedback(null);
+    setSaveMessage(null);
     try {
+      const updates = {
+        description: formData.description,
+        expected_outcome: formData.expected_outcome,
+        definition_of_done: formData.definition_of_done,
+        status: formData.status,
+        repo_id: formData.repo_id ? parseInt(formData.repo_id) : null,
+      };
+      
       const res = await fetch(`/api/missions/${mission.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -283,24 +213,26 @@ export default function MissionDetailPage() {
       if (!res.ok) throw new Error('Failed to update');
       const data = await res.json();
       setMission(data.mission);
-      setSaveFeedback('Saved');
-      setTimeout(() => setSaveFeedback(null), 2000);
+      setSaveMessage('Saved successfully');
+      setTimeout(() => setSaveMessage(null), 3000);
     } catch (err) {
       console.error('Update failed:', err);
-      setSaveFeedback('Error');
-      setTimeout(() => setSaveFeedback(null), 2000);
+      setSaveMessage('Save failed');
+      setTimeout(() => setSaveMessage(null), 3000);
     } finally {
       setSaving(false);
     }
   };
 
-  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    updateMission({ status: e.target.value });
-  };
-
-  const handleRepoChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const repoId = e.target.value ? parseInt(e.target.value) : null;
-    updateMission({ repo_id: repoId });
+  const handleReset = () => {
+    if (!mission) return;
+    setFormData({
+      description: mission.description || '',
+      expected_outcome: mission.expected_outcome || '',
+      definition_of_done: mission.definition_of_done || '',
+      status: mission.status,
+      repo_id: String(mission.repo_id || ''),
+    });
   };
 
   if (loading) {
@@ -327,10 +259,6 @@ export default function MissionDetailPage() {
     );
   }
 
-  const projectKey = mission.project?.toLowerCase() || 'personal';
-  const statusColor = statusColors[mission.status] || statusColors.planned;
-  const typeColor = mission.mission_type ? typeColors[mission.mission_type.toLowerCase()] : '';
-
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return 'N/A';
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -353,91 +281,123 @@ export default function MissionDetailPage() {
 
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <div className="flex items-center gap-2 mb-4">
             <span className="px-3 py-1 rounded-full text-sm border border-zinc-700 text-zinc-400 bg-zinc-900/50">
               {mission.project || 'personal'}
             </span>
-            
-            {/* Editable Status with feedback */}
-            <div className="relative">
-              <select
-                value={mission.status}
-                onChange={handleStatusChange}
-                disabled={saving}
-                className={`px-3 py-1 rounded-full text-sm border bg-transparent cursor-pointer hover:opacity-80 transition-all ${statusColor}`}
-              >
-                {ALL_STATUSES.map(s => (
-                  <option key={s} value={s}>{s.replace('-', ' ')}</option>
-                ))}
-              </select>
-              {saveFeedback && (
-                <span className="absolute -right-16 top-1/2 -translate-y-1/2 text-xs text-green-400">
-                  {saveFeedback}
-                </span>
-              )}
-            </div>
-            
-            {/* Editable Repo */}
-            <select
-              value={mission.repo_id || ''}
-              onChange={handleRepoChange}
-              disabled={saving}
-              className="px-3 py-1 rounded-full text-sm border bg-zinc-800/50 border-zinc-700 text-zinc-300 cursor-pointer hover:border-zinc-600 transition-colors"
-            >
-              <option value="">No repo</option>
-              {repos.map(r => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-            
             {mission.mission_type && (
-              <span className={`px-3 py-1 rounded-full text-sm ${typeColor}`}>
+              <span className="px-3 py-1 rounded-full text-sm bg-purple-500/20 text-purple-400">
                 {mission.mission_type}
               </span>
             )}
           </div>
 
-          <h1 className="text-3xl font-bold mb-6">{mission.title}</h1>
+          <h1 className="text-3xl font-bold">{mission.title}</h1>
         </div>
 
-        {/* Editable Fields - Full Width */}
-        <div className="space-y-6 mb-8">
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6">
-            <EditableField
-              label="Description"
-              value={mission.description}
-              onSave={(v) => updateMission({ description: v })}
-              multiline
-            />
-          </div>
-
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6">
-            <EditableField
-              label="Expected Outcome"
-              value={mission.expected_outcome}
-              onSave={(v) => updateMission({ expected_outcome: v })}
-              multiline
-            />
-          </div>
-
-          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6">
-            <EditableField
-              label="Definition of Done"
-              value={mission.definition_of_done}
-              onSave={(v) => updateMission({ definition_of_done: v })}
-              multiline
-            />
-          </div>
-
-          {mission.outcome && (
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-medium text-zinc-400">Outcome</h3>
-              </div>
-              <p className="text-zinc-300 whitespace-pre-wrap">{mission.outcome}</p>
+        {/* Editable Fields Form */}
+        <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-6 mb-8">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-zinc-200">Mission Details</h2>
+            <div className="flex items-center gap-3">
+              {saveMessage && (
+                <span className={`text-sm ${saveMessage.includes('failed') ? 'text-red-400' : 'text-green-400'}`}>
+                  {saveMessage}
+                </span>
+              )}
+              <button
+                onClick={handleReset}
+                disabled={saving || !isDirty}
+                className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors disabled:opacity-50"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || !isDirty}
+                className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+                  isDirty
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white'
+                    : 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
+                }`}
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
             </div>
-          )}
+          </div>
+
+          <div className="space-y-6">
+            {/* Status */}
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-2">Status</label>
+              <select
+                value={formData.status}
+                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
+              >
+                {ALL_STATUSES.map(s => (
+                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1).replace('-', ' ')}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Repo */}
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-2">Repository</label>
+              <select
+                value={formData.repo_id}
+                onChange={(e) => setFormData({ ...formData, repo_id: e.target.value })}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500"
+              >
+                <option value="">No repository</option>
+                {repos.map(r => (
+                  <option key={r.id} value={r.id}>{r.name} {r.project && `(${r.project})`}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-2">Description</label>
+              <textarea
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                rows={4}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500 resize-y"
+              />
+            </div>
+
+            {/* Expected Outcome */}
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-2">Expected Outcome</label>
+              <textarea
+                value={formData.expected_outcome}
+                onChange={(e) => setFormData({ ...formData, expected_outcome: e.target.value })}
+                rows={3}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500 resize-y"
+              />
+            </div>
+
+            {/* Definition of Done */}
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-2">Definition of Done</label>
+              <textarea
+                value={formData.definition_of_done}
+                onChange={(e) => setFormData({ ...formData, definition_of_done: e.target.value })}
+                rows={4}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-zinc-300 focus:outline-none focus:border-zinc-500 resize-y"
+              />
+            </div>
+          </div>
         </div>
+
+        {/* Outcome (read only) */}
+        {mission.outcome && (
+          <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 mb-8">
+            <h3 className="text-sm font-medium text-zinc-400 mb-2">Outcome</h3>
+            <p className="text-zinc-300 whitespace-pre-wrap">{mission.outcome}</p>
+          </div>
+        )}
 
         {/* Dates */}
         <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-6 mb-8">
@@ -462,7 +422,7 @@ export default function MissionDetailPage() {
           </div>
         </div>
 
-        {/* Audit Trail - Agent Runs */}
+        {/* Agent Runs / Commits */}
         <div>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Commits</h2>
