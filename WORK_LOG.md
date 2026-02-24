@@ -1,86 +1,62 @@
-# Mission #10: Sub-Agents Page with Mission Tracking
+## 2026-02-23/24 — ops.db ingestion diagnosis (missions/agent_runs)
 
-**Status:** in-progress  
-**Branch:** `feat/sub-agents-page`  
-**Project:** personal  
-**Priority:** high
+### Goal
+Diagnose why recent missions/runs are not being captured in `ops.db` for `jarvis-dashboard`.
 
-## Goal
-Create Sub-Agents dashboard page that shows all agent runs with mission context, and ensures `mission_id` flows properly from spawn → agent run → mission audit trail.
+### Commands run
+- `ls -la ~/dev/jarvis-dashboard/`
+- `find src -type f ...`
+- `cat ~/dev/jarvis-dashboard/.env.local`
+- `sqlite3 ~/.openclaw/workspace/ops.db ".tables"`
+- `sqlite3 ~/.openclaw/workspace/ops.db "SELECT * FROM agent_runs ORDER BY started_at DESC LIMIT 5;"`
+- `sqlite3 ~/.openclaw/workspace/ops.db "SELECT * FROM ops_events ORDER BY timestamp DESC LIMIT 10;"`
+- `ls -lh ~/.openclaw/ops.db ~/.openclaw/workspace/ops.db`
+- `sqlite3 ~/.openclaw/ops.db ".tables"`
+- `grep -n "api.on('session_start'" ~/.openclaw/workspace/.openclaw/extensions/ops-db-logger/index.ts`
+- `tail -100 ~/.openclaw/logs/gateway.log | grep -i "plugin\|extension"`
 
-## Components
+### Key findings
 
-### 1. Sub-Agents List Page (`/agents`)
-- Table/grid of all agent_runs
-- Filters: model, status, mission, date range
-- Columns: label, model, status, duration, cost, mission
-- Sort by started_at DESC
+#### 1) jarvis-dashboard does NOT write missions/agent_runs automatically
+- `jarvis-dashboard` mostly **reads** from SQLite via `src/lib/ops-db.ts` (using `sqlite3 -readonly` for reads).
+- The only direct writer found is:
+  - `src/app/api/spawn/route.ts` which **inserts a row into `agent_runs`** with status `running`.
+  - But that route explicitly says: *"Agent spawn record created. Use 'openclaw agent spawn' or dashboard to complete."*
+  - i.e. it is **manual bookkeeping**; it does not actually integrate with OpenClaw execution.
 
-### 2. Mission Context in Agent Runs
-- Link runs to missions via `mission_id`
-- Show mission title in run cards
-- Click mission → go to mission detail
+#### 2) There IS a plugin/hooks mechanism in OpenClaw intended to write to ops.db
+- Plugin discovered and currently being loaded by the gateway:
+  - `~/.openclaw/workspace/.openclaw/extensions/ops-db-logger/openclaw.plugin.json`
+  - `~/.openclaw/workspace/.openclaw/extensions/ops-db-logger/index.ts`
+- Gateway log confirms load:
+  - `... [plugins] loaded ... (plugin=ops-db-logger, source=.../ops-db-logger/index.ts)`
 
-### 3. Spawn Agent from Dashboard
-- Button to spawn new sub-agent
-- Mission selector dropdown (pre-populates mission_id)
-- Form: task, model, thinking level, mission_id
+#### 3) But the plugin is broken for `agent_runs` ingestion
+Symptoms:
+- `ops_events` is being populated heavily (recent rows exist).
+- `agent_runs` is NOT being populated for recent sub-agent/cron runs.
 
-### 4. Wire up mission_id Tracking
-- Update spawn API to accept mission_id
-- Store mission_id in agent_runs table
-- Ensure mission detail page shows linked runs
+Root cause:
+- In `ops-db-logger/index.ts`, the hook `api.on('session_start', ...)` is registered **twice** (lines ~28 and ~99).
+- The second registration overrides the first in the plugin API (effective behavior: only the later handler runs).
+- The **first** `session_start` handler contains the logic that inserts into `agent_runs`.
+- Therefore, only the generic ops_events session_start logging remains; no `agent_runs` inserts happen.
 
-## Files to Create/Modify
+Extra issue: path confusion
+- There are two DB files:
+  - `~/.openclaw/ops.db` (0 bytes, empty)
+  - `~/.openclaw/workspace/ops.db` (~600KB, real)
+- `jarvis-dashboard` default config points to `~/.openclaw/workspace/ops.db` (correct), but a stray empty `~/.openclaw/ops.db` could confuse manual commands.
 
-### New Files
-- `src/app/agents/page.tsx` — Sub-Agents list page
-- `src/app/agents/agent-run-card.tsx` — Run card component
-- `src/app/api/spawn/route.ts` — Spawn agent endpoint
+### Minimal fix plan (1–3 steps)
+1) Fix the plugin: merge the two `session_start` handlers into one, or rename one event.
+   - Keep the subagent-tracking insert into `agent_runs` AND also keep ops_events logging.
+2) Restart the OpenClaw gateway so the plugin reloads.
+3) Verify by spawning a subagent/cron and checking:
+   - `sqlite3 ~/.openclaw/workspace/ops.db "SELECT * FROM agent_runs ORDER BY started_at DESC LIMIT 5;"`
 
-### Modified Files
-- `src/components/sidebar.tsx` — Link to /agents
-- `src/lib/ops-db.ts` — Add agent run queries
-- `src/app/api/missions/[id]/route.ts` — Verify mission_id linkage works
-
-## API Considerations
-
-### GET /api/agent-runs
-```typescript
-interface AgentRunFilters {
-  mission_id?: number;
-  model?: string;
-  status?: string;
-  since?: string;
-}
-```
-
-### POST /api/spawn
-```typescript
-interface SpawnRequest {
-  task: string;
-  model?: string;
-  thinking_level?: string;
-  mission_id?: number;
-}
-```
-
-## Database Notes
-
-Currently `agent_runs.mission_id` exists but is mostly NULL:
-```sql
-SELECT status, COUNT(*) FROM agent_runs GROUP BY status;
--- Need to populate mission_id on new runs
-```
-
-## Definition of Done
-1. [ ] `/agents` page shows all agent runs with mission context
-2. [ ] Can filter runs by mission, model, status
-3. [ ] Spawn agent button launches sub-agent with mission_id
-4. [ ] New agent runs have mission_id populated
-5. [ ] Mission detail shows linked runs in Commits section
-6. [ ] Build passes, tested on localhost:3012
-
-## References
-- Branch: `feat/sub-agents-page`
-- Mission ID: 10
+### Relevant files / code points
+- Dashboard DB reader: `~/dev/jarvis-dashboard/src/lib/ops-db.ts`
+- Dashboard spawn writer: `~/dev/jarvis-dashboard/src/app/api/spawn/route.ts`
+- Plugin descriptor: `~/.openclaw/workspace/.openclaw/extensions/ops-db-logger/openclaw.plugin.json`
+- Plugin code (broken duplicate hook): `~/.openclaw/workspace/.openclaw/extensions/ops-db-logger/index.ts` (duplicate `api.on('session_start', ...)`)

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getMissions, getMissionById, getMissionSteps, getProjects, getAgentRunsForMission } from '@/lib/ops-db';
+import { getMissions, getMissionById, getMissionSteps, getProjects, getAgentRunsForMission, getRepos } from '@/lib/ops-db';
 
 export async function GET(request: NextRequest) {
   try {
@@ -19,7 +19,8 @@ export async function GET(request: NextRequest) {
       }
       const steps = await getMissionSteps(parseInt(id));
       const runs = await getAgentRunsForMission(parseInt(id));
-      return NextResponse.json({ mission, steps, runs });
+      const repos = await getRepos();
+      return NextResponse.json({ mission, steps, runs, repos });
     }
 
     // If fetching project list
