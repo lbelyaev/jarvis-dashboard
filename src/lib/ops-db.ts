@@ -129,7 +129,7 @@ export async function getMissions(filters: MissionFilters = {}): Promise<Mission
     LEFT JOIN repos r ON m.repo_id = r.id
     WHERE 1=1
   `;
-  const params: any[] = [];
+  const params: Array<string | number> = [];
 
   if (filters.project && filters.project.length > 0) {
     const placeholders = filters.project.map(() => '?').join(', ');
