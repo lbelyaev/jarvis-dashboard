@@ -89,46 +89,48 @@ function AgentRunCard({ run, index }: { run: AgentRun; index: number }) {
   const statusColor = runStatusColors[run.status] || runStatusColors.pending;
 
   return (
-    <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors">
-      <div className="flex items-start gap-4">
-        <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 text-sm font-medium text-zinc-400">
-          {index + 1}
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <span className="font-medium text-zinc-200">{run.label || 'Untitled run'}</span>
-            <span className={`px-2 py-0.5 text-xs rounded border ${statusColor}`}>
-              {run.status}
-            </span>
+    <Link href={`/runs/${run.id}`} className="block">
+      <div className="bg-zinc-900/50 border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition-colors">
+        <div className="flex items-start gap-4">
+          <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center flex-shrink-0 text-sm font-medium text-zinc-400">
+            {index + 1}
           </div>
-
-          <div className="flex items-center gap-2 mb-2 text-sm">
-            <span className="text-zinc-500">{run.model}</span>
-            {run.thinking_level && (
-              <span className="text-zinc-600">· {run.thinking_level}</span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-4 mb-2 text-sm text-zinc-500">
-            <span>⏱ {formatDuration(run.duration_sec)}</span>
-            {run.cost_usd != null && <span className="text-amber-400">${run.cost_usd.toFixed(4)}</span>}
-            {run.tokens_input != null && (
-              <span>{run.tokens_input.toLocaleString()} → {run.tokens_output?.toLocaleString()} tokens</span>
-            )}
-            <span>{formatDate(run.started_at)}</span>
-          </div>
-
-          {run.error && (
-            <div className="mt-2 bg-red-900/20 border border-red-800/50 rounded p-2">
-              <pre className="text-red-400 text-xs whitespace-pre-wrap">{run.error}</pre>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="font-medium text-zinc-200">{run.label || 'Untitled run'}</span>
+              <span className={`px-2 py-0.5 text-xs rounded border ${statusColor}`}>
+                {run.status}
+              </span>
             </div>
-          )}
-          {run.result_summary && !run.error && (
-            <p className="mt-2 text-zinc-400 text-sm line-clamp-2">{run.result_summary}</p>
-          )}
+
+            <div className="flex items-center gap-2 mb-2 text-sm">
+              <span className="text-zinc-500">{run.model}</span>
+              {run.thinking_level && (
+                <span className="text-zinc-600">· {run.thinking_level}</span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-4 mb-2 text-sm text-zinc-500">
+              <span>⏱ {formatDuration(run.duration_sec)}</span>
+              {run.cost_usd != null && <span className="text-amber-400">${run.cost_usd.toFixed(4)}</span>}
+              {run.tokens_input != null && (
+                <span>{run.tokens_input.toLocaleString()} → {run.tokens_output?.toLocaleString()} tokens</span>
+              )}
+              <span>{formatDate(run.started_at)}</span>
+            </div>
+
+            {run.error && (
+              <div className="mt-2 bg-red-900/20 border border-red-800/50 rounded p-2">
+                <pre className="text-red-400 text-xs whitespace-pre-wrap">{run.error}</pre>
+              </div>
+            )}
+            {run.result_summary && !run.error && (
+              <p className="mt-2 text-zinc-400 text-sm line-clamp-2">{run.result_summary}</p>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 }
 

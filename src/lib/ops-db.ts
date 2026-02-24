@@ -298,6 +298,21 @@ export async function getAgentRuns(limitParam: string | null): Promise<AgentRun[
   return queryDb<AgentRun>(sql, [limit]);
 }
 
+export async function getAgentRunById(runId: number): Promise<AgentRun | null> {
+  const sql = `
+    SELECT
+      id, label, mission_id, step_id, model, thinking_level, status,
+      tokens_input, tokens_output, tokens_cache, cost_usd, duration_sec,
+      started_at, completed_at, result_summary, error, session_key, created_at
+    FROM agent_runs
+    WHERE id = ?1
+    LIMIT 1
+  `;
+
+  const rows = await queryDb<AgentRun>(sql, [runId]);
+  return rows[0] || null;
+}
+
 export async function getAgentRunsForMission(missionId: number): Promise<AgentRun[]> {
   // First try by mission_id
   const sqlByMissionId = `
