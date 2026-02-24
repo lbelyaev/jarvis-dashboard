@@ -84,3 +84,28 @@ SELECT status, COUNT(*) FROM agent_runs GROUP BY status;
 ## References
 - Branch: `feat/sub-agents-page`
 - Mission ID: 10
+
+## 2026-02-23
+
+### feat/runs-detail-page (merge-ready)
+
+- Added Run detail page: `/runs/[id]`.
+  - Mission run cards now link to the run detail page.
+  - Page fetches run via `getAgentRunById` and shows basic run metadata + link back to mission.
+- ops-db: added `getAgentRunById(runId: number)`.
+- Lint cleanup to unblock CI:
+  - Removed `any` usage in ops-db / mission update route.
+  - Adjusted costs page to avoid setState-in-effect lint error.
+
+Verification:
+- `npm ci`
+- `npm run lint` (warnings only)
+- `npm run build` (success)
+
+Pushed:
+- `origin/feat/runs-detail-page`
+
+### wip/salvage-2026-02-23 (kept separate)
+
+- Contains Playwright config + an initial E2E test (`tests/dashboard.spec.ts`).
+- Pushed as-is to `origin/wip/salvage-2026-02-23` (NOT merged).

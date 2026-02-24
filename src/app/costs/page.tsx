@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useFetch } from "@/hooks/use-fetch";
 import { DollarSign, TrendingUp, BarChart3, PieChart as PieIcon, X } from "lucide-react";
@@ -119,8 +119,8 @@ export default function CostsPage() {
   }, [dateRange]);
   
   const { data, loading } = useFetch<CostsData>(apiUrl, 60000);
-  
-  const costs = data?.costs || [];
+
+  const costs = useMemo(() => data?.costs || [], [data?.costs]);
   const today = useMemo(() => {
     return new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
   }, []);
@@ -134,21 +134,8 @@ export default function CostsPage() {
     return costs;
   }, [costs, dateRange, selectedDay]);
 
-  // Auto-select today when clicking a specific day on chart
-  useEffect(() => {
-    if (!loading && costs.length > 0 && dateRange === "day" && !selectedDay) {
-      const hasToday = costs.some((c) => c.date === today);
-      if (hasToday) {
-        setSelectedDay(today);
-      }
-    }
-  }, [loading, costs, today, dateRange, selectedDay]);
 
   // Get selected day's data
-  const selectedDayData = useMemo(() => {
-    if (!selectedDay) return null;
-    return costs.find((c) => c.date === selectedDay);
-  }, [selectedDay, costs]);
 
   // Prepare daily line chart data (already sorted ascending by API)
   const dailyData = filteredCosts.map((c) => ({
@@ -200,12 +187,6 @@ export default function CostsPage() {
   const avgDaily = filteredCosts.length > 0 ? filteredCosts.reduce((sum, c) => sum + c.total, 0) / filteredCosts.length : 0;
 
   // Handle click on chart point - switches to single day view
-  const handleChartClick = (_data: unknown, index: number) => {
-    if (dailyData[index]) {
-      setDateRange("day");
-      setSelectedDay(dailyData[index].fullDate);
-    }
-  };
 
   const formatSelectedDate = (dateStr: string) => {
     const d = new Date(dateStr + "T00:00:00");
